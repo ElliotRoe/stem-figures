@@ -217,13 +217,11 @@ export const CHEMISTRY: CatalogEntry[] = [
   {
     id: 'structure-editor',
     site: 'chemistry',
-    off: true,
     kind: 'editor',
     name: 'Organic Structure Editor',
     path: '/structure-editor',
-    blurb: 'Draw an organic molecule yourself, atom by atom and bond by bond.',
-    description:
-      'Draw organic structures for chemistry tests. Drag carbon, hydrogen, oxygen and other atoms onto a grid, join them with single, double and triple bonds, and copy the finished structural formula into your worksheet.',
-    keywords: ['organic', 'structural', 'formula', 'structure', 'draw', 'drawing', 'editor', 'sketch', 'molecule', 'carbon', 'hydrocarbon', 'alkane', 'alkene', 'alkyne', 'alcohol', 'isomer', 'isomers', 'functional', 'group', 'bond', 'bonds', 'double', 'triple', 'chain'],
+    blurb: 'Draw an organic molecule once, then show it skeletal, condensed or with every bond.',
+    description: 'Organic molecules as skeletal, condensed or full structural formulas.',
+    keywords: ['organic', 'structural', 'formula', 'structure', 'skeletal', 'line', 'condensed', 'displayed', 'full', 'expanded', 'draw', 'drawing', 'editor', 'molecule', 'carbon', 'hydrogen', 'hydrocarbon', 'alkane', 'alkene', 'alkyne', 'alcohol', 'ester', 'acid', 'amine', 'benzene', 'ring', 'isomer', 'isomers', 'functional', 'group', 'bond', 'bonds', 'double', 'triple', 'chain', 'numbering'],
   },
 ]

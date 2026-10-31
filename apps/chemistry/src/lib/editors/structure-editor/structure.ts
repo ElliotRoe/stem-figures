@@ -1,11 +1,14 @@
-// A structure drawn by hand in the Organic Structure Editor: atoms placed on
-// a square grid and the bonds between them. Everything here is plain data
-// and arithmetic, so the page (StructureEditor.svelte) only handles pointers.
+// An organic structure drawn in the Organic Structure Editor: its carbons and
+// other atoms (a hydrogen only where the teacher dragged one in), the bonds
+// between them, and where each atom sits on the page. There is no grid: bonds
+// are drawn a fixed length at 30° steps. How each view draws the structure,
+// added hydrogens included, is view.ts's. Everything here is plain data and
+// arithmetic, so the page (StructureEditor.svelte) only handles pointers.
 
 export const ELEMENTS = ['C', 'H', 'O', 'N', 'S', 'P', 'F', 'Cl', 'Br', 'I'] as const
 export type ElementSymbol = (typeof ELEMENTS)[number]
 
-/** The tray's big cards; the rest are under "More elements". */
+/** The tray's big cards; the rest are under "More atoms". */
 export const MAIN_ELEMENTS: { symbol: ElementSymbol; name: string }[] = [
   { symbol: 'C', name: 'Carbon' },
   { symbol: 'H', name: 'Hydrogen' },
@@ -13,109 +16,366 @@ export const MAIN_ELEMENTS: { symbol: ElementSymbol; name: string }[] = [
 ]
 export const MORE_ELEMENTS = ELEMENTS.filter((e) => !MAIN_ELEMENTS.some((m) => m.symbol === e))
 
+export const RINGS = [
+  { kind: 'cyclopentane', name: 'Cyclopentane', size: 5, aromatic: false },
+  { kind: 'cyclohexane', name: 'Cyclohexane', size: 6, aromatic: false },
+  { kind: 'benzene', name: 'Benzene', size: 6, aromatic: true },
+] as const
+export type RingKind = (typeof RINGS)[number]['kind']
+
 export type BondOrder = 1 | 2 | 3
 export interface Atom { id: string; element: ElementSymbol; x: number; y: number }
 export interface Bond { id: string; a: string; b: string; order: BondOrder }
-export interface Structure { atoms: Atom[]; bonds: Bond[] }
+export interface OrganicStructure { atoms: Atom[]; bonds: Bond[] }
+export interface Point { x: number; y: number }
 
-/** The drawing page, in SVG units, and its grid. Atoms sit on grid points,
- *  never on the page's edge. */
+/** The drawing page, in SVG units. Atoms stay a margin in from its edges. */
 export const WIDTH = 1040
 export const HEIGHT = 660
-export const GRID = 30
+export const MARGIN = 30
+/** Every bond the editor draws is this long. */
+export const BOND = 70
+/** How near a new atom must come to an existing one to land on it instead. */
+const MERGE = BOND * 0.3
 
-/** Atom symbols' size, and how far bonds stop short of an atom's center. */
-export const FONT = 26
-const bondGap = (a: Atom) => (a.element.length > 1 ? 21 : 16)
-/** Space between the lines of a double or triple bond. */
-const BOND_SPACING = 6
-/** White space around an exported structure. */
-export const EXPORT_PAD = 14
-
-export const emptyStructure = (): Structure => ({ atoms: [], bonds: [] })
-
-export const cloneStructure = (s: Structure): Structure => ({
-  atoms: s.atoms.map((a) => ({ ...a })),
-  bonds: s.bonds.map((b) => ({ ...b })),
-})
-
-/** The line or lines drawing a bond, stopping short of both atoms' symbols. */
-export function bondLines(a: Atom, b: Atom, order: BondOrder) {
-  const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
-  const ux = (b.x - a.x) / length
-  const uy = (b.y - a.y) / length
-  const offsets = order === 1 ? [0] : order === 2 ? [-0.5, 0.5] : [-1, 0, 1]
-  return offsets.map((o) => ({
-    x1: a.x + ux * bondGap(a) - uy * BOND_SPACING * o,
-    y1: a.y + uy * bondGap(a) + ux * BOND_SPACING * o,
-    x2: b.x - ux * bondGap(b) - uy * BOND_SPACING * o,
-    y2: b.y - uy * bondGap(b) + ux * BOND_SPACING * o,
-  }))
+/** Each element's usual valence, which added hydrogens fill, and the most
+ *  bonds it can have before it's overbonded (S and P can expand theirs). */
+const VALENCE: Record<ElementSymbol, { usual: number; most: number }> = {
+  C: { usual: 4, most: 4 }, H: { usual: 1, most: 1 }, O: { usual: 2, most: 2 }, N: { usual: 3, most: 3 },
+  S: { usual: 2, most: 6 }, P: { usual: 3, most: 5 }, F: { usual: 1, most: 1 }, Cl: { usual: 1, most: 1 },
+  Br: { usual: 1, most: 1 }, I: { usual: 1, most: 1 },
 }
 
-export const nextOrder = (order: BondOrder): BondOrder => (order === 3 ? 1 : ((order + 1) as BondOrder))
+export const emptyStructure = (): OrganicStructure => ({ atoms: [], bonds: [] })
 
+export const nextOrder = (order: BondOrder): BondOrder => (order === 3 ? 1 : ((order + 1) as BondOrder))
 export const BOND_NAMES: Record<BondOrder, string> = { 1: 'single', 2: 'double', 3: 'triple' }
 
+const newId = () => crypto.randomUUID()
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const RAD = Math.PI / 180
 
-/** The grid point nearest a point on the page. */
-export const snap = (x: number, y: number) => ({
-  x: clamp(Math.round(x / GRID) * GRID, GRID, WIDTH - GRID),
-  y: clamp(Math.round(y / GRID) * GRID, GRID, HEIGHT - GRID),
+/** A point moved onto the page, a margin in from its edges. */
+export const onPage = (p: Point): Point => ({ x: clamp(p.x, MARGIN, WIDTH - MARGIN), y: clamp(p.y, MARGIN, HEIGHT - MARGIN) })
+
+/** A direction in whole degrees from 0 to 359: 0° to the right, 90° down the page. */
+export const degrees = (dx: number, dy: number) => ((Math.round(Math.atan2(dy, dx) / RAD) % 360) + 360) % 360
+/** The nearest 30° step to a direction. */
+export const snapAngle = (dx: number, dy: number) => (Math.round(degrees(dx, dy) / 30) * 30) % 360
+/** The point a distance from another in a direction. */
+export const step = (p: Point, angle: number, length = BOND): Point => ({
+  x: p.x + length * Math.cos(angle * RAD),
+  y: p.y + length * Math.sin(angle * RAD),
 })
+/** How far apart two directions are, from 0 to 180. */
+export const turn = (a: number, b: number) => {
+  const d = Math.abs(a - b) % 360
+  return d > 180 ? 360 - d : d
+}
 
-/** How far a point is from the segment between two atoms. */
-function distanceToBond(p: { x: number; y: number }, a: Atom, b: Atom) {
+export const atomById = (s: OrganicStructure, id: string) => s.atoms.find((a) => a.id === id)
+
+export const bondBetween = (s: OrganicStructure, a: string, b: string) =>
+  s.bonds.find((bond) => (bond.a === a && bond.b === b) || (bond.a === b && bond.b === a))
+
+export const bondsOf = (s: OrganicStructure, id: string) => s.bonds.filter((b) => b.a === id || b.b === id)
+
+export const otherEnd = (bond: Bond, id: string) => (bond.a === id ? bond.b : bond.a)
+
+export const neighbors = (s: OrganicStructure, id: string) =>
+  bondsOf(s, id).map((b) => atomById(s, otherEnd(b, id))).filter((a): a is Atom => !!a)
+
+/** The directions an atom's bonds leave it in. */
+export const bondAngles = (s: OrganicStructure, atom: Atom) => neighbors(s, atom.id).map((n) => degrees(n.x - atom.x, n.y - atom.y))
+
+/** The atom nearest a point, if one is within a radius of it. */
+export function atomAt(s: OrganicStructure, p: Point, radius = MERGE) {
+  let best: Atom | undefined
+  let bestD = radius
+  for (const a of s.atoms) {
+    const d = Math.hypot(a.x - p.x, a.y - p.y)
+    if (d <= bestD) [best, bestD] = [a, d]
+  }
+  return best
+}
+
+const bondSum = (s: OrganicStructure, id: string) => bondsOf(s, id).reduce((n, b) => n + b.order, 0)
+
+/** Whether an atom has more bonds than its element can have. */
+export const overbonded = (s: OrganicStructure, atom: Atom) => bondSum(s, atom.id) > VALENCE[atom.element].most
+
+/** The hydrogens the editor adds to an atom: its usual valence less its
+ *  bonds (a hydrogen the teacher drew counts as one), never below none. */
+export function addedHydrogens(s: OrganicStructure, atom: Atom) {
+  if (atom.element === 'H') return 0
+  return Math.max(0, VALENCE[atom.element].usual - bondSum(s, atom.id))
+}
+
+/** How far a point is from the segment between two points. */
+export function distanceToSegment(p: Point, a: Point, b: Point) {
   const [dx, dy] = [b.x - a.x, b.y - a.y]
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
+  const t = clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1), 0, 1)
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
-/** A free grid point for an atom added without dragging it: the page's
- *  middle, or the nearest point to it a bond's length from every atom and
- *  clear of every bond, working outward. */
-export function freeSpot(s: Structure) {
-  const byId = new Map(s.atoms.map((a) => [a.id, a]))
-  const free = (p: { x: number; y: number }) =>
-    s.atoms.every((a) => Math.hypot(a.x - p.x, a.y - p.y) >= 2 * GRID) &&
-    s.bonds.every((b) => {
-      const [a, c] = [byId.get(b.a), byId.get(b.b)]
-      return !a || !c || distanceToBond(p, a, c) >= GRID
-    })
-  const mid = snap(WIDTH / 2, HEIGHT / 2)
-  for (let ring = 0; ring < WIDTH / GRID; ring++)
-    for (let dy = -ring; dy <= ring; dy++)
-      for (let dx = -ring; dx <= ring; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue
-        const p = { x: mid.x + dx * GRID, y: mid.y + dy * GRID }
-        if (p.x < GRID || p.x > WIDTH - GRID || p.y < GRID || p.y > HEIGHT - GRID) continue
-        if (free(p)) return p
-      }
-  return mid
+/** How close a point comes to anything drawn, ignoring some atoms. */
+function crowding(s: OrganicStructure, p: Point, ignore: string[] = []) {
+  let nearest = Infinity
+  for (const a of s.atoms) if (!ignore.includes(a.id)) nearest = Math.min(nearest, Math.hypot(a.x - p.x, a.y - p.y))
+  return nearest
 }
 
-/** How far a group of atoms moves when dragged by (dx, dy): whole grid
- *  steps, stopping where the first atom would leave the page. */
-export function groupShift(origins: { x: number; y: number }[], dx: number, dy: number) {
-  const xs = origins.map((p) => p.x)
-  const ys = origins.map((p) => p.y)
-  return {
-    dx: clamp(Math.round(dx / GRID) * GRID, GRID - Math.min(...xs), WIDTH - GRID - Math.max(...xs)),
-    dy: clamp(Math.round(dy / GRID) * GRID, GRID - Math.min(...ys), HEIGHT - GRID - Math.max(...ys)),
+/** Which way a path turns at its middle point: 1 one way, -1 the other, 0 straight on. */
+const turnSign = (a: Point, b: Point, c: Point) => Math.sign(Math.round((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)))
+
+/** The 30° direction from an atom with the most room for a new bond. A
+ *  chain end grows 120° round from its bond, turning the other way from the
+ *  chain's last turn so it zigzags (the more level way for a chain's second
+ *  bond); a lone atom grows up to the right. */
+export function openAngle(s: OrganicStructure, atom: Atom) {
+  const taken = bondAngles(s, atom)
+  if (!taken.length) return 330
+  const room = (angle: number) => crowding(s, step(atom, angle), [atom.id]) > BOND * 0.6
+  if (taken.length === 1) {
+    const [back] = neighbors(s, atom.id)
+    const before = neighbors(s, back.id).find((n) => n.id !== atom.id)
+    const ways = [(taken[0] + 120) % 360, (taken[0] + 240) % 360]
+    const ranked = before
+      ? ways.sort((p, q) => +(turnSign(back, atom, step(atom, p)) === turnSign(before, back, atom)) - +(turnSign(back, atom, step(atom, q)) === turnSign(before, back, atom)))
+      : ways.sort((p, q) => Math.abs(Math.sin(p * RAD)) - Math.abs(Math.sin(q * RAD)))
+    return ranked.find(room) ?? ranked[0]
   }
+  return Array.from({ length: 12 }, (_, i) => i * 30)
+    .map((angle) => ({ angle, room: crowding(s, step(atom, angle), [atom.id]), gap: Math.min(...taken.map((t) => turn(t, angle))) }))
+    .sort((p, q) => q.gap - p.gap || q.room - p.room)[0].angle
+}
+
+export function addAtom(s: OrganicStructure, element: ElementSymbol, at: Point) {
+  const id = newId()
+  return { structure: { ...s, atoms: [...s.atoms, { id, element, ...onPage(at) }] }, id }
+}
+
+/** Joins two atoms with a single bond: null if they're the same atom or
+ *  already bonded. */
+export function bondAtoms(s: OrganicStructure, a: string, b: string, order: BondOrder = 1): OrganicStructure | null {
+  if (a === b || bondBetween(s, a, b)) return null
+  return { ...s, bonds: [...s.bonds, { id: newId(), a, b, order }] }
+}
+
+/** Adds a carbon a bond's length from an atom in a direction, bonded to it.
+ *  If an atom is already there, the bond goes to that atom instead, which is
+ *  how a ring closes. */
+export function growFrom(s: OrganicStructure, fromId: string, angle: number) {
+  const from = atomById(s, fromId)!
+  const at = step(from, angle)
+  const there = atomAt(s, at)
+  if (there && there.id !== fromId) return { structure: bondAtoms(s, fromId, there.id) ?? s, id: there.id }
+  const added = addAtom(s, 'C', at)
+  return { structure: bondAtoms(added.structure, fromId, added.id)!, id: added.id }
+}
+
+/** Two bonded carbons, the first at a point and the second a bond's length
+ *  away in a direction. */
+export function startChain(s: OrganicStructure, at: Point, angle: number) {
+  const first = addAtom(s, 'C', at)
+  return growFrom(first.structure, first.id, angle).structure
+}
+
+export const cycleBond = (s: OrganicStructure, bondId: string): OrganicStructure => ({
+  ...s,
+  bonds: s.bonds.map((b) => (b.id === bondId ? { ...b, order: nextOrder(b.order) } : b)),
+})
+
+export const setElement = (s: OrganicStructure, atomId: string, element: ElementSymbol): OrganicStructure => ({
+  ...s,
+  atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, element } : a)),
+})
+
+export type RingTarget = { atom: string } | { bond: string } | { at: Point }
+
+/** How far a ring's corners are from its center. */
+const ringRadius = (size: number) => BOND / (2 * Math.sin(Math.PI / size))
+
+/** A ring's corners, the first at an angle from its center, going round one way or the other. */
+const ringCorners = (center: Point, size: number, first: number, sweep = 1) =>
+  Array.from({ length: size }, (_, k) => step(center, first + (sweep * k * 360) / size, ringRadius(size)))
+
+/** How much room a ring needs round its center, for freeSpot. */
+export const ringRoom = (kind: RingKind) => ringRadius(RINGS.find((r) => r.kind === kind)!.size) + BOND
+
+/** Adds a ring: on its own around a point, attached to an atom by a new
+ *  bond, or fused along a bond so it shares that bond's two atoms. A corner
+ *  landing on an existing atom uses it. Benzene's double bonds alternate,
+ *  matched to a shared bond so no atom gets too many. */
+export function addRing(s: OrganicStructure, kind: RingKind, target: RingTarget): OrganicStructure {
+  const ring = RINGS.find((r) => r.kind === kind)!
+  const n = ring.size
+  const radius = ringRadius(n)
+  let corners: Point[]
+  let ids: (string | null)[] = Array(n).fill(null)
+  let linkTo: string | null = null
+
+  if ('bond' in target) {
+    const shared = s.bonds.find((b) => b.id === target.bond)!
+    const [a, b] = [atomById(s, shared.a)!, atomById(s, shared.b)!]
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    const along = degrees(b.x - a.x, b.y - a.y)
+    const apothem = BOND / (2 * Math.tan(Math.PI / n))
+    // The side whose new corners land clear of other atoms, then the one
+    // with fewer atoms nearby.
+    const sides = [along + 90, along - 90].map((side) => {
+      const center = step(mid, side, apothem)
+      const fromA = degrees(a.x - center.x, a.y - center.y)
+      const sweep = turn(fromA + 360 / n, degrees(b.x - center.x, b.y - center.y)) < 1 ? 1 : -1
+      const corners = ringCorners(center, n, fromA, sweep)
+      const others = s.atoms.filter((x) => x.id !== a.id && x.id !== b.id)
+      const landed = corners.slice(2).filter((c) => others.some((x) => Math.hypot(x.x - c.x, x.y - c.y) < BOND * 0.6)).length
+      const busy = others.filter((x) => Math.hypot(x.x - center.x, x.y - center.y) < radius * 1.6).length
+      return { corners, landed, busy }
+    })
+    corners = sides.sort((p, q) => p.landed - q.landed || p.busy - q.busy)[0].corners
+    ids[0] = a.id
+    ids[1] = b.id
+  } else if ('atom' in target) {
+    const from = atomById(s, target.atom)!
+    const angle = openAngle(s, from)
+    const center = step(from, angle, BOND + radius)
+    corners = ringCorners(center, n, angle + 180)
+    linkTo = from.id
+  } else {
+    // A ring on its own moves onto the page whole rather than being squashed.
+    corners = ringCorners(target.at, n, -90)
+    const shift = (lo: number, hi: number, lowest: number, highest: number) => Math.max(lo - lowest, 0) + Math.min(hi - highest, 0)
+    const sx = shift(MARGIN, WIDTH - MARGIN, Math.min(...corners.map((c) => c.x)), Math.max(...corners.map((c) => c.x)))
+    const sy = shift(MARGIN, HEIGHT - MARGIN, Math.min(...corners.map((c) => c.y)), Math.max(...corners.map((c) => c.y)))
+    corners = corners.map((c) => ({ x: c.x + sx, y: c.y + sy }))
+  }
+
+  let next = s
+  ids = ids.map((id, k) => {
+    if (id) return id
+    const there = atomAt(next, corners[k])
+    if (there) return there.id
+    const added = addAtom(next, 'C', corners[k])
+    next = added.structure
+    return added.id
+  })
+  if (linkTo) next = bondAtoms(next, linkTo, ids[0]!) ?? next
+
+  // Bond j joins corners j and j + 1. Benzene alternates: doubles on the
+  // odd bonds when it's fused onto a single bond (so it still has three of
+  // its own), on the even ones otherwise, unless that overbonds more atoms.
+  const shared = 'bond' in target ? s.bonds.find((b) => b.id === target.bond)! : null
+  const preferred = shared && shared.order === 1 ? 1 : 0
+  const ways = ring.aromatic ? [preferred, 1 - preferred] : [-1]
+  const built = ways.map((odd) => {
+    let r = next
+    for (let j = 0; j < n; j++) r = bondAtoms(r, ids[j]!, ids[(j + 1) % n]!, j % 2 === odd ? 2 : 1) ?? r
+    return r
+  })
+  const over = (r: OrganicStructure) => r.atoms.filter((a) => overbonded(r, a)).length
+  return built.reduce((best, r) => (over(r) < over(best) ? r : best))
+}
+
+/** Swings an end atom (one with a single bond) round its neighbor to a
+ *  direction, keeping its bond length. Any other atom is left as it is. */
+export function swingEnd(s: OrganicStructure, atomId: string, angle: number) {
+  const atom = atomById(s, atomId)
+  const [link] = atom ? bondsOf(s, atomId) : []
+  if (!atom || !link || bondsOf(s, atomId).length !== 1) return s
+  const hub = atomById(s, otherEnd(link, atomId))!
+  const to = onPage(step(hub, angle, Math.hypot(atom.x - hub.x, atom.y - hub.y)))
+  return { ...s, atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, ...to } : a)) }
+}
+
+/** Moves a group of atoms from where they started by (dx, dy), stopping
+ *  where the first would leave the page. */
+export function moveAtoms(s: OrganicStructure, origins: Map<string, Point>, dx: number, dy: number): OrganicStructure {
+  const starts = [...origins.values()]
+  if (!starts.length) return s
+  const sx = clamp(dx, MARGIN - Math.min(...starts.map((p) => p.x)), WIDTH - MARGIN - Math.max(...starts.map((p) => p.x)))
+  const sy = clamp(dy, MARGIN - Math.min(...starts.map((p) => p.y)), HEIGHT - MARGIN - Math.max(...starts.map((p) => p.y)))
+  return {
+    ...s,
+    atoms: s.atoms.map((a) => {
+      const o = origins.get(a.id)
+      return o ? { ...a, x: o.x + sx, y: o.y + sy } : a
+    }),
+  }
+}
+
+/** Every atom joined to one through bonds, itself included. */
+export function connectedTo(s: OrganicStructure, id: string) {
+  const seen = new Set([id])
+  const queue = [id]
+  while (queue.length) {
+    const at = queue.pop()!
+    for (const b of bondsOf(s, at)) {
+      const other = otherEnd(b, at)
+      if (!seen.has(other)) {
+        seen.add(other)
+        queue.push(other)
+      }
+    }
+  }
+  return [...seen]
+}
+
+/** Each separate organic structure on the page, as its atoms' ids. */
+export function parts(s: OrganicStructure) {
+  const seen = new Set<string>()
+  const found: string[][] = []
+  for (const a of s.atoms) {
+    if (seen.has(a.id)) continue
+    const part = connectedTo(s, a.id)
+    for (const id of part) seen.add(id)
+    found.push(part)
+  }
+  return found
+}
+
+/** The shortest path of atoms between two, through bonds a test allows, or
+ *  null if there's none. */
+export function shortestPath(s: OrganicStructure, from: string, to: string, allow: (bond: Bond, next: string) => boolean = () => true) {
+  const prev = new Map<string, string | null>([[from, null]])
+  const queue = [from]
+  while (queue.length && !prev.has(to)) {
+    const at = queue.shift()!
+    for (const b of bondsOf(s, at)) {
+      const n = otherEnd(b, at)
+      if (!prev.has(n) && allow(b, n)) {
+        prev.set(n, at)
+        queue.push(n)
+      }
+    }
+  }
+  if (!prev.has(to)) return null
+  const path = [to]
+  while (prev.get(path[0])) path.unshift(prev.get(path[0])!)
+  return path
+}
+
+/** The bond nearest a point, if one is within a distance of it. */
+export function bondAt(s: OrganicStructure, p: Point, reach: number) {
+  let best: Bond | undefined
+  let bestD = reach
+  for (const b of s.bonds) {
+    const d = distanceToSegment(p, atomById(s, b.a)!, atomById(s, b.b)!)
+    if (d <= bestD) [best, bestD] = [b, d]
+  }
+  return best
 }
 
 export interface Box { x1: number; y1: number; x2: number; y2: number }
 
 /** The atoms whose centers are inside a box dragged either way. */
-export function atomsIn(s: Structure, box: Box) {
+export function atomsIn(s: OrganicStructure, box: Box) {
   const [left, right] = [Math.min(box.x1, box.x2), Math.max(box.x1, box.x2)]
   const [top, bottom] = [Math.min(box.y1, box.y2), Math.max(box.y1, box.y2)]
   return s.atoms.filter((a) => a.x >= left && a.x <= right && a.y >= top && a.y <= bottom).map((a) => a.id)
 }
 
-export function withoutAtoms(s: Structure, ids: Iterable<string>): Structure {
+export function withoutAtoms(s: OrganicStructure, ids: Iterable<string>): OrganicStructure {
   const gone = new Set(ids)
   return {
     atoms: s.atoms.filter((a) => !gone.has(a.id)),
@@ -123,45 +383,46 @@ export function withoutAtoms(s: Structure, ids: Iterable<string>): Structure {
   }
 }
 
-export const bondBetween = (s: Structure, a: string, b: string) =>
-  s.bonds.find((bond) => (bond.a === a && bond.b === b) || (bond.a === b && bond.b === a))
+export const withoutBond = (s: OrganicStructure, bondId: string): OrganicStructure => ({ ...s, bonds: s.bonds.filter((b) => b.id !== bondId) })
 
-/** The part of the page an export keeps: the atoms' symbols, which reach
- *  past every bond, plus a margin. Null when there is nothing drawn. */
-export function cropBox(s: Structure) {
-  if (!s.atoms.length) return null
-  const halfW = (a: Atom) => (a.element.length > 1 ? 17 : 10)
-  const halfH = FONT * 0.37
-  const left = Math.min(...s.atoms.map((a) => a.x - halfW(a))) - EXPORT_PAD
-  const right = Math.max(...s.atoms.map((a) => a.x + halfW(a))) + EXPORT_PAD
-  const top = Math.min(...s.atoms.map((a) => a.y - halfH)) - EXPORT_PAD
-  const bottom = Math.max(...s.atoms.map((a) => a.y + halfH)) + EXPORT_PAD
-  return { x: left, y: top, width: right - left, height: bottom - top }
+/** A spot for something added without dragging it: the page's middle, or
+ *  the nearest point to it with room round it (a bond's length for an atom,
+ *  more for a ring, see ringRoom), working outward. */
+export function freeSpot(s: OrganicStructure, room = BOND): Point {
+  const byId = new Map(s.atoms.map((a) => [a.id, a]))
+  const free = (p: Point) =>
+    s.atoms.every((a) => Math.hypot(a.x - p.x, a.y - p.y) >= room * 1.1) &&
+    s.bonds.every((b) => {
+      const [a, c] = [byId.get(b.a), byId.get(b.b)]
+      return !a || !c || distanceToSegment(p, a, c) >= room - BOND / 2
+    })
+  const mid = { x: WIDTH / 2, y: HEIGHT / 2 }
+  const gap = BOND / 2
+  for (let ring = 0; ring < WIDTH / gap; ring++)
+    for (let dy = -ring; dy <= ring; dy++)
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue
+        const p = { x: mid.x + dx * gap, y: mid.y + dy * gap }
+        if (p.x < MARGIN || p.x > WIDTH - MARGIN || p.y < MARGIN || p.y > HEIGHT - MARGIN) continue
+        if (free(p)) return p
+      }
+  return mid
 }
 
-/** A few words saying what is drawn, for screen readers and the image's label. */
-export function describe(s: Structure) {
-  if (!s.atoms.length) return 'An empty structure'
-  const counts = new Map<string, number>()
-  for (const a of s.atoms) counts.set(a.element, (counts.get(a.element) ?? 0) + 1)
-  const atoms = [...counts].map(([e, n]) => `${n} ${e}`).join(', ')
-  return `A structure of ${s.atoms.length} atom${s.atoms.length === 1 ? '' : 's'} (${atoms}) and ${s.bonds.length} bond${s.bonds.length === 1 ? '' : 's'}`
-}
-
-/** A structure read back from browser storage, keeping only well-formed
- *  atoms on the page and bonds between two of them. */
-export function tidyStructure(stored: unknown): Structure {
+/** An organic structure read back from browser storage, keeping only
+ *  well-formed atoms (moved onto the page) and one bond between any two. */
+export function tidyStructure(stored: unknown): OrganicStructure {
   if (!stored || typeof stored !== 'object') return emptyStructure()
   const { atoms, bonds } = stored as { atoms?: unknown; bonds?: unknown }
   const good = (Array.isArray(atoms) ? atoms : []).filter(
     (a): a is Atom =>
-      !!a && typeof a.id === 'string' && ELEMENTS.includes(a.element) &&
-      Number.isFinite(a.x) && Number.isFinite(a.y),
-  ).map((a) => ({ id: a.id, element: a.element, ...snap(a.x, a.y) }))
+      !!a && typeof a.id === 'string' && ELEMENTS.includes(a.element) && Number.isFinite(a.x) && Number.isFinite(a.y),
+  ).map((a) => ({ id: a.id, element: a.element, ...onPage(a) }))
   const ids = new Set(good.map((a) => a.id))
-  const joined = (Array.isArray(bonds) ? bonds : []).filter(
-    (b): b is Bond =>
-      !!b && typeof b.id === 'string' && ids.has(b.a) && ids.has(b.b) && b.a !== b.b && [1, 2, 3].includes(b.order),
-  ).map((b) => ({ id: b.id, a: b.a, b: b.b, order: b.order }))
+  const joined: Bond[] = []
+  for (const b of Array.isArray(bonds) ? bonds : []) {
+    const ok = !!b && typeof b.id === 'string' && ids.has(b.a) && ids.has(b.b) && b.a !== b.b && [1, 2, 3].includes(b.order)
+    if (ok && !bondBetween({ atoms: good, bonds: joined }, b.a, b.b)) joined.push({ id: b.id, a: b.a, b: b.b, order: b.order })
+  }
   return { atoms: good, bonds: joined }
 }

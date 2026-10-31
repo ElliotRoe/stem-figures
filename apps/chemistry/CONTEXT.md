@@ -17,7 +17,7 @@ A page that makes one kind of figure from a teacher's settings, named for what i
 _Avoid_: Maker, tool, builder, app
 
 **Editor**:
-A page where the teacher draws a figure by hand instead of setting it up, listed in the directory like a generator but tagged Editor. Nothing about the figure goes in its address; it's kept in the teacher's browser. The one so far is the Organic Structure Editor, for full structural formulas: atoms dragged onto a grid and joined by single, double or triple bonds. It doesn't take a Lewis structure from Lewis Structures (yet).
+A page where the teacher draws a figure by hand instead of setting it up, listed in the directory like a generator but tagged Editor. Nothing about the figure goes in its address; it's kept in the teacher's browser. The one so far is the Organic Structure Editor, where the teacher draws an organic structure once and shows it in any of four views (see **Organic structures**). It doesn't take a Lewis structure from Lewis Structures (yet).
 _Avoid_: Drawing tool, sketchpad, canvas
 
 **Directory**:
@@ -126,7 +126,7 @@ The after reading minus the before reading, which is the object's volume.
 _Avoid_: Difference, change
 
 **Caption**:
-The short line under each cylinder in a volume by displacement figure, "Before" and "After" unless the teacher changes them.
+A short line the teacher types under a figure: under each cylinder in a volume by displacement figure, "Before" and "After" unless the teacher changes them; under an organic structure, the teacher's own words (such as its name), or nothing. The editor never names a molecule itself.
 _Avoid_: Label, subtitle
 
 **Length Reading**:
@@ -695,3 +695,37 @@ _Avoid_: Enthalpy diagram (fine in search keywords), energy level diagram (fine 
 **Shape only**:
 The energy axis with no numbers or gridlines, fitted to the levels, for a diagram where the shape is the point (the enzyme setup). Numbered, with light gridlines, is the default.
 _Avoid_: Unnumbered, qualitative
+
+### Organic structures
+
+**Organic structure**:
+The molecule a teacher draws in the Organic Structure Editor: its carbons and other atoms other than hydrogen, the bonds between them, and the shape they were drawn in. Every view shows the same organic structure in that same shape.
+_Avoid_: Structure (that's a Lewis structure's), molecule (that's a particle in a particle diagram), drawing
+
+**Added hydrogen**:
+A hydrogen the editor gives an atom to fill its usual valence (C 4, N 3, O 2, S 2, halogens 1) after its bonds, so the teacher never draws them. A hydrogen the teacher drags in from the tray is a drawn atom and counts toward its neighbor's valence.
+_Avoid_: Implicit hydrogen (fine in help text), auto hydrogen
+
+**View**:
+How the organic structure is shown: skeletal formula, carbon skeleton, condensed formula or full structural formula. The teacher can draw in any view, and copying or downloading gives the view showing.
+_Avoid_: Mode (that's Move, Draw or Delete), format, style
+
+**Skeletal formula**:
+The view with bonds alone: each carbon is a corner or line end with no label, and its hydrogens aren't shown. Other atoms are labeled with their hydrogens (OH, NH₂). A carbon drawn in a straight line between two bonds can't be seen, so the editor points it out. The teacher can label the CH₃ ends (H₃C…CH₃).
+_Avoid_: Line diagram, line-angle formula, bond-line formula
+
+**Carbon skeleton**:
+The view with a C at every carbon and no hydrogens on carbon; other atoms are labeled with their hydrogens as in the skeletal formula.
+_Avoid_: Carbons only
+
+**Condensed formula**:
+The view with each carbon labeled with its hydrogens (CH₃, CH₂, CH, C) and the bonds between those groups drawn. A label reads backward (H₃C, HO) when its bond comes from the right.
+_Avoid_: Condensed structural formula (fine in help text), condensed structural diagram
+
+**Full structural formula**:
+The view with every atom and every bond drawn, each added hydrogen on its own bond, O–H and N–H included, set in the open space around its atom.
+_Avoid_: Displayed formula, expanded structural formula, Lewis structure (that has lone electrons)
+
+**Carbon numbering**:
+Small numbers beside the carbons of one chain or ring in each organic structure, shown in every view. The editor numbers the ring if there is one, otherwise the chain through a C=O (then through a carbon bonded to O or N), longest first, from the end nearest the C=O, then an O or N, then a multiple bond, then a branch (so an acid's or ester's C=O carbon is 1); the teacher can flip it to run the other way. Branch carbons aren't numbered. It isn't IUPAC naming.
+_Avoid_: Locants (fine in help text), carbon labels
