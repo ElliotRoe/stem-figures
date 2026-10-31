@@ -32,10 +32,10 @@
   let { name }: Props = $props()
 
   type Mode = 'draw' | 'move' | 'delete'
-  const MODES: { mode: Mode; label: string; hint: string }[] = [
-    { mode: 'draw', label: 'Draw', hint: 'Drag from an atom to add a carbon, or from empty space to start a chain. Drag onto an atom to bond them; tap a bond for double, then triple.' },
-    { mode: 'move', label: 'Move', hint: 'Drag an atom or bond to move its structure, or an end atom to swing it round. Drag a box to move just some atoms.' },
-    { mode: 'delete', label: 'Delete', hint: 'Tap an atom or bond to delete it, or drag a box around atoms.' },
+  const MODES: { mode: Mode; label: string }[] = [
+    { mode: 'draw', label: 'Draw' },
+    { mode: 'move', label: 'Move' },
+    { mode: 'delete', label: 'Delete' },
   ]
   const VIEW_TIPS: Record<View, string> = {
     skeletal: 'Skeletal formula: bonds alone, with labels only on atoms other than carbon',
@@ -56,7 +56,7 @@
   let mode = $state<Mode>('draw')
   let selected = $state.raw<string[]>([])
   let showMore = $state(false)
-  let message = $state('Drag from the page to draw a C–C bond, or drag an atom or ring from the tray.')
+  let message = $state('')
   let svg = $state<SVGSVGElement>()
 
   const drawn = $derived(drawView(structure, settings))
@@ -81,7 +81,7 @@
         flip: v.flip === true,
         caption: typeof v.caption === 'string' ? v.caption.slice(0, 80) : '',
       }
-      if (structure.atoms.length) message = 'Your last structure is back. Keep drawing, or clear the page for a new one.'
+      if (structure.atoms.length) message = 'Your last structure is back.'
     } catch {
       /* nothing saved, or storage blocked */
     }
@@ -126,7 +126,7 @@
   function setMode(next: Mode) {
     mode = next
     if (next === 'draw') selected = []
-    message = MODES.find((m) => m.mode === next)!.hint
+    message = ''
   }
 
   /** A point on the page from a pointer's place on screen. */
@@ -181,13 +181,13 @@
       if (onAtom && onAtom.element === item.element) return
       if (onAtom) return commit(setElement(structure, onAtom.id, item.element), `That ${onAtom.element} is now ${item.element}.`)
       const added = addAtom(structure, item.element, at ?? freeSpot(structure))
-      return commit(added.structure, `${item.element} placed. Drag from it to bond it, or drop another atom on it to change it.`)
+      return commit(added.structure, `${item.element} placed.`)
     }
     const name = ringName(item.ring)
     if (onAtom) return commit(addRing(structure, item.ring, { atom: onAtom.id }), `A ${name} ring attached.`)
     const onBond = at && bondAt(structure, at, REACH / 2)
     if (onBond) return commit(addRing(structure, item.ring, { bond: onBond.id }), `A ${name} ring fused along that bond.`)
-    commit(addRing(structure, item.ring, { at: at ?? freeSpot(structure, ringRoom(item.ring)) }), `A ${name} ring placed. Drag from a corner to add a chain.`)
+    commit(addRing(structure, item.ring, { at: at ?? freeSpot(structure, ringRoom(item.ring)) }), `A ${name} ring placed.`)
   }
 
   // ----- The page
@@ -232,7 +232,7 @@
       return grab(event, p, both ? selected : connectedTo(structure, bond.a), null, both)
     }
     const order = nextOrder(bond.order)
-    commit(cycleBond(structure, bond.id), `Now a ${BOND_NAMES[order]} bond.${order === 3 ? ' Tap again for single.' : ''}`)
+    commit(cycleBond(structure, bond.id), `Now a ${BOND_NAMES[order]} bond.`)
   }
 
   function pressPage(event: PointerEvent) {
@@ -297,24 +297,24 @@
     if (cancelled) selected = box.keep
     else if (mode === 'delete' && dragged && ids.length) deleteAtoms(ids)
     else if (mode === 'move' && ids.length)
-      message = `${plural(ids.length, 'atom')} selected. Drag one to move them together, or press Delete to remove them.`
+      message = `${plural(ids.length, 'atom')} selected.`
     box = null
   }
 
   function finishDrawing(d: NonNullable<typeof drawing>) {
     if (!d.from) {
-      if (!d.moved) return commit(addAtom(structure, 'C', d.start).structure, 'C placed. Drag from it to add a bonded carbon.')
-      return commit(startChain(structure, d.start, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)), 'Bond drawn. Drag from either end to keep going.')
+      if (!d.moved) return commit(addAtom(structure, 'C', d.start).structure, 'C placed.')
+      return commit(startChain(structure, d.start, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)), 'Bond drawn.')
     }
     const from = atomById(structure, d.from)!
-    if (!d.moved) return commit(growFrom(structure, from.id, openAngle(structure, from)).structure, 'Carbon added. Tap again to keep the chain going.')
+    if (!d.moved) return commit(growFrom(structure, from.id, openAngle(structure, from)).structure, 'Carbon added.')
     const target = drawingTarget(d)
     if (target.atom) {
       if (bondBetween(structure, from.id, target.atom.id)) {
-        message = 'Those atoms are already bonded. Tap the bond to change it.'
+        message = 'Those atoms are already bonded.'
         return
       }
-      return commit(bondAtoms(structure, from.id, target.atom.id)!, 'Bonded. Tap the bond to make it double, then triple.')
+      return commit(bondAtoms(structure, from.id, target.atom.id)!, 'Bonded.')
     }
     commit(growFrom(structure, from.id, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)).structure, 'Carbon added.')
   }
@@ -339,7 +339,7 @@
 
   function clearPage() {
     if (!confirm('Clear the whole page? You can undo this.')) return
-    commit(emptyStructure(), 'A fresh page. Drag from the page to draw a C–C bond.')
+    commit(emptyStructure(), 'A fresh page.')
     selected = []
   }
 
@@ -453,7 +453,14 @@
     </section>
 
     <section>
-      <h2>Mode</h2>
+      <h2 class="with-tip">
+        Mode
+        <HelpTip id="mode-tip" label="How to draw">
+          Draw: drag from an atom to add a carbon, or from empty space to start a chain; drag onto an atom to bond them; tap a bond for double,
+          then triple. Move: drag an atom or bond to move its structure, an end atom to swing it, or a box to move some atoms. Delete: tap an
+          atom or bond, or drag a box. Shift-click adds to a selection, Delete removes it, and Ctrl+Z undoes.
+        </HelpTip>
+      </h2>
       <div class="segmented modes" role="radiogroup" aria-label="Mode">
         {#each MODES as m (m.mode)}
           <button type="button" role="radio" aria-checked={mode === m.mode} class:on={mode === m.mode} class:delete={m.mode === 'delete'} onclick={() => setMode(m.mode)}>
@@ -462,7 +469,6 @@
           </button>
         {/each}
       </div>
-      <p class="note">{MODES.find((m) => m.mode === mode)!.hint}</p>
     </section>
 
     <section>
@@ -503,10 +509,6 @@
       </label>
     </section>
 
-    <section class="keys">
-      <h2>Shortcuts</h2>
-      <p class="note">Shift-click to add atoms to a selection. Delete removes the selected atoms. Esc lets go of a selection. Ctrl+Z undoes.</p>
-    </section>
   </aside>
 
   <div class="figure-side">
@@ -593,7 +595,7 @@
   .editor { display: flex; flex-direction: column; gap: 1rem; padding: 1rem; }
   .tools { display: flex; flex-direction: column; gap: 1.1rem; padding: 1rem 1.1rem 1.2rem; }
   h2 { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-  .note { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.84rem; }
+  h2.with-tip { display: flex; align-items: center; justify-content: space-between; }
   .warning { margin: 0.5rem 0 0; color: var(--amber-dark, #92400e); font-size: 0.84rem; }
 
   .tray { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin-top: 0.7rem; }
@@ -668,7 +670,6 @@
     .views { flex-basis: 100%; }
     .views button { flex: 1; padding-inline: 0.2rem; }
     .wide-only { display: none; }
-    .keys { display: none; }
   }
 
   /* Wide screens: the tools on the left and the page filling the window beside them. */
