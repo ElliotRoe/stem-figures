@@ -34,6 +34,16 @@ export const CHEMISTRY: CatalogEntry[] = [
     keywords: ['gas', 'syringe', 'plunger', 'collecting', 'collection', 'rate', 'reaction', 'volume', 'cm3', 'mL', 'conical', 'flask', 'delivery', 'tube', 'measurement', 'lab', 'apparatus'],
   },
   {
+    id: 'structure-editor',
+    site: 'chemistry',
+    kind: 'editor',
+    name: 'Organic Structure Editor',
+    path: '/structure-editor',
+    blurb: 'Draw an organic molecule once, then show it skeletal, condensed or with every bond.',
+    description: 'Organic molecules as skeletal, condensed or full structural formulas.',
+    keywords: ['organic', 'structural', 'formula', 'structure', 'skeletal', 'line', 'condensed', 'displayed', 'full', 'expanded', 'draw', 'drawing', 'editor', 'molecule', 'carbon', 'hydrogen', 'hydrocarbon', 'alkane', 'alkene', 'alkyne', 'alcohol', 'ester', 'acid', 'amine', 'benzene', 'ring', 'isomer', 'isomers', 'functional', 'group', 'bond', 'bonds', 'double', 'triple', 'chain', 'numbering'],
+  },
+  {
     // Also on Math and Physics Figures, as their own copies: see docs/adr/0001-a-generator-on-two-sites.md.
     id: 'length-reading',
     site: 'chemistry',
@@ -213,15 +223,5 @@ export const CHEMISTRY: CatalogEntry[] = [
     description:
       'Make printable half-life graphs for chemistry and physics tests. Pick carbon-14, iodine-131, uranium-238 or another isotope, or type your own half-life, and get its decay curve as percent, mass, nuclei or activity remaining, with guide lines at each half-life, a stable daughter, or up to three isotopes with their names hidden for students.',
     keywords: ['half-life', 'half', 'life', 'decay', 'radioactive', 'radioactivity', 'exponential', 'nuclear', 'isotope', 'parent', 'daughter', 'carbon', 'dating', 'radiometric', 'activity', 'becquerel', 'Bq', 'count', 'rate', 'remaining', 'iodine', 'uranium', 'curve', 'graph'],
-  },
-  {
-    id: 'structure-editor',
-    site: 'chemistry',
-    kind: 'editor',
-    name: 'Organic Structure Editor',
-    path: '/structure-editor',
-    blurb: 'Draw an organic molecule once, then show it skeletal, condensed or with every bond.',
-    description: 'Organic molecules as skeletal, condensed or full structural formulas.',
-    keywords: ['organic', 'structural', 'formula', 'structure', 'skeletal', 'line', 'condensed', 'displayed', 'full', 'expanded', 'draw', 'drawing', 'editor', 'molecule', 'carbon', 'hydrogen', 'hydrocarbon', 'alkane', 'alkene', 'alkyne', 'alcohol', 'ester', 'acid', 'amine', 'benzene', 'ring', 'isomer', 'isomers', 'functional', 'group', 'bond', 'bonds', 'double', 'triple', 'chain', 'numbering'],
   },
 ]
