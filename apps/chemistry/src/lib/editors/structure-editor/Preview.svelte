@@ -1,22 +1,25 @@
 <script lang="ts">
-  // The Organic Structure Editor's directory card: ethanol, drawn the way
-  // the editor draws it, every atom on the grid.
+  // The Organic Structure Editor's directory card: 2-phenylethanol's skeletal
+  // formula, drawn the way the editor draws it. Its ids are fixed so the
+  // server's and browser's pictures match.
   import StructureDrawing from './StructureDrawing.svelte'
-  import { cropBox, GRID, type Atom, type Bond, type ElementSymbol, type Structure } from './structure'
+  import { step, type Atom, type Bond, type OrganicStructure } from './structure'
+  import { drawView } from './view'
 
-  const at = (id: string, element: ElementSymbol, col: number, row: number): Atom => ({ id, element, x: col * 2 * GRID, y: row * 2 * GRID })
-  const atoms = [
-    at('c1', 'C', 2, 2), at('c2', 'C', 3, 2), at('o', 'O', 4, 2), at('ho', 'H', 5, 2),
-    at('h1', 'H', 1, 2), at('h2', 'H', 2, 1), at('h3', 'H', 2, 3), at('h4', 'H', 3, 1), at('h5', 'H', 3, 3),
-  ]
-  const bond = (a: string, b: string): Bond => ({ id: `${a}-${b}`, a, b, order: 1 })
-  const ethanol: Structure = {
-    atoms,
-    bonds: [bond('c1', 'c2'), bond('c2', 'o'), bond('o', 'ho'), bond('h1', 'c1'), bond('h2', 'c1'), bond('h3', 'c1'), bond('h4', 'c2'), bond('h5', 'c2')],
+  const center = { x: 300, y: 300 }
+  const ring: Atom[] = Array.from({ length: 6 }, (_, k) => ({ id: `r${k}`, element: 'C', ...step(center, -90 + k * 60) }))
+  const a: Atom = { id: 'a', element: 'C', ...step(ring[1], 330) }
+  const b: Atom = { id: 'b', element: 'C', ...step(a, 30) }
+  const o: Atom = { id: 'o', element: 'O', ...step(b, 330) }
+  const bond = (x: string, y: string, order: Bond['order'] = 1): Bond => ({ id: `${x}-${y}`, a: x, b: y, order })
+  const structure: OrganicStructure = {
+    atoms: [...ring, a, b, o],
+    bonds: [...ring.map((r, k) => bond(r.id, ring[(k + 1) % 6].id, k % 2 ? 1 : 2)), bond('r1', 'a'), bond('a', 'b'), bond('b', 'o')],
   }
-  const crop = cropBox(ethanol)!
+  const drawn = drawView(structure, { view: 'skeletal', labelEnds: false, labelRings: true, acids: false, reverseLeft: true, numbering: false, flip: false, caption: '' })
+  const crop = drawn.crop!
 </script>
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="{crop.x} {crop.y} {crop.width} {crop.height}" font-family="Arial, Helvetica, sans-serif">
-  <StructureDrawing structure={ethanol} />
+  <StructureDrawing {structure} {drawn} />
 </svg>
