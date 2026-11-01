@@ -16,7 +16,7 @@
     atoms: [...ring, a, b, o],
     bonds: [...ring.map((r, k) => bond(r.id, ring[(k + 1) % 6].id, k % 2 ? 1 : 2)), bond('r1', 'a'), bond('a', 'b'), bond('b', 'o')],
   }
-  const drawn = drawView(structure, { view: 'skeletal', labelEnds: false, numbering: false, flip: false, caption: '' })
+  const drawn = drawView(structure, { view: 'skeletal', labelEnds: false, labelRings: true, acids: false, reverseLeft: true, numbering: false, flip: false, caption: '' })
   const crop = drawn.crop!
 </script>
 

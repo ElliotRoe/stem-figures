@@ -6,8 +6,8 @@
 // view keeps the shape the teacher drew; none moves an atom (ADR 0007).
 import { carbonNumbers } from './numbering'
 import {
-  addedHydrogens, atomById, BOND, bondAngles, bondsOf, distanceToSegment, neighbors, overbonded, parts,
-  shortestPath, step, turn, type Atom, type Bond, type OrganicStructure, type Point,
+  addedHydrogens, atomById, BOND, bondAngles, degrees, H_BOND, bondsOf, distanceToSegment, neighbors, overbonded, parts,
+  otherEnd, shortestPath, step, turn, type Atom, type Bond, type OrganicStructure, type Point,
 } from './structure'
 
 export const VIEWS = [
@@ -28,6 +28,15 @@ export interface ViewSettings {
   view: View
   /** label the CH₃ ends of a skeletal formula */
   labelEnds: boolean
+  /** label ring carbons (and draw their hydrogens) in the other views; off,
+   *  rings are bare polygons as in the skeletal formula */
+  labelRings: boolean
+  /** write each carboxylic acid group as CO₂H (HO₂C facing left) in the
+   *  condensed formula and carbon skeleton */
+  acids: boolean
+  /** write a label backward (H₃C, HO) when its bonds all come from the
+   *  right, so its atom sits next to the bond; off, every label reads CH₃ */
+  reverseLeft: boolean
   numbering: boolean
   /** number each chain from its other end, or each ring the other way round */
   flip: boolean
@@ -41,8 +50,9 @@ export const SUB_FONT = FONT * 0.7
 export const SUB_DROP = FONT * 0.25
 export const NUMBER_FONT = 15
 export const CAPTION_FONT = 20
-/** A drawn C–H (or O–H, N–H) bond, a little shorter than the rest. */
-const H_BOND = BOND * 0.8
+/** A chiral center's asterisk beside an atom with no label, and how far out. */
+export const STAR_FONT = FONT
+const STAR_GAP = 13
 /** Space between the lines of a double or triple bond. */
 const LINE_GAP = 7
 /** How far the second line of an off-center double bond stops short of a
@@ -63,31 +73,51 @@ export interface Label { atomId: string | null; x: number; y: number; runs: Run[
 /** A bond's lines; a full structural formula's added hydrogens have no bondId. */
 export interface DrawnBond { bondId: string | null; lines: Line[] }
 export interface CarbonNumber { atomId: string; n: number; x: number; y: number }
+/** A chiral center's asterisk beside an atom with no label (a label writes its own, *CH). */
+export interface Star { atomId: string; x: number; y: number }
+/** One of an atom's added hydrogens in the full structural formula, where it's drawn. */
+export interface AddedHydrogen { atomId: string; index: number; x: number; y: number }
 export interface Drawn {
   bonds: DrawnBond[]
   /** atom labels first (atomId set), then added hydrogens */
   labels: Label[]
+  /** the full structural formula's added hydrogens, for dragging */
+  hydrogens: AddedHydrogen[]
   numbers: CarbonNumber[]
+  stars: Star[]
   caption: { text: string; x: number; y: number } | null
   /** atoms to mark while editing: overbonded ones, and carbons the skeletal
    *  formula hides by drawing them in a straight line */
   overbonded: string[]
   hidden: string[]
   numberingNote: string | null
+  /** whether a label would read backward (H₃C, HO) with reverseLeft on */
+  leftLabels: boolean
   /** what a copy or download keeps, null with nothing drawn */
   crop: Rect | null
 }
 
 /** Arial's widths, in ems, for the letters labels use; anything else is a digit. */
-const EM: Record<string, number> = { C: 0.722, H: 0.722, O: 0.778, N: 0.722, S: 0.667, P: 0.667, F: 0.611, B: 0.667, I: 0.278, l: 0.222, r: 0.333 }
+const EM: Record<string, number> = { '*': 0.389, C: 0.722, H: 0.722, O: 0.778, N: 0.722, S: 0.667, P: 0.667, F: 0.611, B: 0.667, I: 0.278, l: 0.222, r: 0.333 }
 const runWidth = (r: Run) => [...r.text].reduce((w, c) => w + (EM[c] ?? 0.556), 0) * (r.sub ? SUB_FONT : FONT)
 const CAP = FONT * 0.36
 
-function makeLabel(atomId: string | null, at: Point, element: string, hydrogens: number, backward: boolean): Label {
+/** Text for a count: nothing for none, the letters alone for one, else with a subscript. */
+const counted = (text: string, n: number): Run[] => (n === 0 ? [] : n === 1 ? [{ text, sub: false }] : [{ text, sub: false }, { text: String(n), sub: true }])
+const STAR: Run = { text: '*', sub: false }
+/** Runs split into groups, each letters and the subscript after them. */
+const groups = (runs: Run[]) => runs.reduce<Run[][]>((g, r) => (r.sub && g.length ? g[g.length - 1].push(r) : g.push([r]), g), [])
+
+/** An atom's label: its symbol, then what follows it (hydrogens, or O₂H for
+ *  an acid group), written before it instead when it faces backward. A
+ *  chiral center's asterisk goes in front (*CH), or after when backward. */
+function makeLabel(atomId: string | null, at: Point, element: string, hydrogens: number, backward: boolean, chiral = false, follows = counted('H', hydrogens)): Label {
   const symbol: Run = { text: element, sub: false }
-  const hs: Run[] = hydrogens === 0 ? [] : hydrogens === 1 ? [{ text: 'H', sub: false }] : [{ text: 'H', sub: false }, { text: String(hydrogens), sub: true }]
-  const runs = backward ? [...hs, symbol] : [symbol, ...hs]
-  const before = backward ? hs.reduce((w, r) => w + runWidth(r), 0) : 0
+  const star = chiral ? [STAR] : []
+  // Backward, the groups come in the other order, each keeping its subscript (HO₂C).
+  const ahead = backward ? groups(follows).reverse().flat() : star
+  const runs = backward ? [...ahead, symbol, ...star] : [...ahead, symbol, ...follows]
+  const before = ahead.reduce((w, r) => w + runWidth(r), 0)
   const x = at.x - before - runWidth(symbol) / 2
   const width = runs.reduce((w, r) => w + runWidth(r), 0)
   const bottom = runs.some((r) => r.sub) ? SUB_DROP + SUB_FONT * 0.36 : CAP
@@ -100,6 +130,7 @@ function makeLabel(atomId: string | null, at: Point, element: string, hydrogens:
 /** How many hydrogens an atom's label writes, or null for no label. */
 function labelHydrogens(s: OrganicStructure, atom: Atom, settings: ViewSettings) {
   const { view } = settings
+  if (bareRingCarbon(s, atom, settings)) return null
   if (atom.element === 'H' || view === 'full') return 0
   const hs = addedHydrogens(s, atom)
   if (atom.element !== 'C' || view === 'condensed') return hs
@@ -109,6 +140,31 @@ function labelHydrogens(s: OrganicStructure, atom: Atom, settings: ViewSettings)
   if (settings.labelEnds && bonds.length === 1 && bonds[0].order === 1 && hs === 3) return hs
   return null
 }
+
+/** Each carboxylic acid group's carbon, with its two oxygens: a carbon with
+ *  three bonds, one double to an O and one single to an O, neither O bonded
+ *  to anything else. */
+export function acidGroups(s: OrganicStructure) {
+  const found = new Map<string, string[]>()
+  for (const atom of s.atoms) {
+    const bonds = bondsOf(s, atom.id)
+    if (atom.element !== 'C' || bonds.length !== 3) continue
+    const lone = (order: number) =>
+      bonds.map((b) => (b.order === order ? atomById(s, otherEnd(b, atom.id)) : undefined)).find((o) => o?.element === 'O' && bondsOf(s, o.id).length === 1)
+    const [double, single] = [lone(2), lone(1)]
+    if (double && single) found.set(atom.id, [double.id, single.id])
+  }
+  return found
+}
+
+/** Whether a carbon is in a ring: one of its bonds has another way round. */
+export const inRing = (s: OrganicStructure, atom: Atom) =>
+  bondsOf(s, atom.id).some((bond) => shortestPath(s, bond.a, bond.b, (b) => b.id !== bond.id))
+
+/** Whether a view draws a carbon as a bare ring corner, as the skeletal
+ *  formula does, because the teacher turned ring labels off. */
+const bareRingCarbon = (s: OrganicStructure, atom: Atom, settings: ViewSettings) =>
+  !settings.labelRings && settings.view !== 'skeletal' && atom.element === 'C' && inRing(s, atom)
 
 /** Whether the skeletal formula hides a carbon: two bonds in a straight
  *  line, unless it's an alkyne's or allene's, which are meant to be straight. */
@@ -206,27 +262,56 @@ const union = (rects: Rect[]): Rect | null => {
 const overlaps = (p: Rect, q: Rect) => p.x < q.x + q.width && q.x < p.x + p.width && p.y < q.y + q.height && q.y < p.y + p.height
 
 export function drawView(s: OrganicStructure, settings: ViewSettings): Drawn {
+  // Acid groups written CO₂H take their oxygens and those bonds into the label.
+  const acids = settings.acids && (settings.view === 'condensed' || settings.view === 'carbons') ? acidGroups(s) : new Map<string, string[]>()
+  const inAcid = new Set([...acids.values()].flat())
   const labels: Label[] = []
   const boxes = new Map<string, Rect>()
+  let leftLabels = false
   for (const atom of s.atoms) {
+    if (inAcid.has(atom.id)) continue
     const hs = labelHydrogens(s, atom, settings)
     if (hs === null) continue
-    const near = neighbors(s, atom.id)
-    const backward = near.length > 0 && near.every((n) => n.x > atom.x + 1)
-    const label = makeLabel(atom.id, atom, atom.element, hs, backward)
+    const near = neighbors(s, atom.id).filter((n) => !inAcid.has(n.id))
+    const follows = acids.has(atom.id) ? [...counted('O', 2), ...counted('H', 1)] : undefined
+    const facesLeft = near.length > 0 && near.every((n) => n.x > atom.x + 1)
+    leftLabels ||= facesLeft && (hs > 0 || !!follows)
+    const backward = facesLeft && settings.reverseLeft
+    const label = makeLabel(atom.id, atom, atom.element, hs, backward, !!atom.chiral, follows)
     labels.push(label)
     boxes.set(atom.id, label.box)
   }
-  const bonds: DrawnBond[] = s.bonds.map((b) => ({ bondId: b.id, lines: bondLines(s, b, boxes) }))
+  const bonds: DrawnBond[] = s.bonds
+    .filter((b) => !inAcid.has(b.a) && !inAcid.has(b.b))
+    .map((b) => ({ bondId: b.id, lines: bondLines(s, b, boxes) }))
 
-  // The full structural formula draws each added hydrogen as an atom.
+  // The full structural formula draws each added hydrogen as an atom: where
+  // the teacher dragged them, or else spread out round the atom, clear of
+  // the rest (dragged ones first, so the others keep clear of them).
   const hydrogenTurns = new Map<string, number[]>()
+  const hydrogens: AddedHydrogen[] = []
   if (settings.view === 'full') {
-    const placed: Point[] = []
     const byId = new Map(s.atoms.map((a) => [a.id, a]))
+    const counts = new Map(s.atoms.map((a) => [a.id, bareRingCarbon(s, a, settings) ? 0 : addedHydrogens(s, a)]))
+    const kept = (atom: Atom) => (atom.hydrogens && atom.hydrogens.length === counts.get(atom.id) ? atom.hydrogens : null)
+    const placed: Point[] = s.atoms.flatMap((a) => (kept(a) ?? []).map((p) => ({ x: a.x + p.x, y: a.y + p.y })))
     for (const atom of s.atoms) {
-      const count = addedHydrogens(s, atom)
+      const count = counts.get(atom.id)!
       if (!count) continue
+      const drawHydrogen = (end: Point, index: number) => {
+        hydrogens.push({ atomId: atom.id, index, ...end })
+        const h = makeLabel(null, end, 'H', 0, false)
+        labels.push(h)
+        const p = leaveBox(atom, end, boxes.get(atom.id))
+        const q = leaveBox(end, atom, h.box)
+        bonds.push({ bondId: null, lines: [{ x1: p.x, y1: p.y, x2: q.x, y2: q.y }] })
+      }
+      const own = kept(atom)
+      if (own) {
+        hydrogenTurns.set(atom.id, own.map((p) => degrees(p.x, p.y)))
+        own.forEach((p, i) => drawHydrogen({ x: atom.x + p.x, y: atom.y + p.y }, i))
+        continue
+      }
       const crowded = (angle: number) => {
         const end = step(atom, angle, H_BOND)
         return (
@@ -237,16 +322,22 @@ export function drawView(s: OrganicStructure, settings: ViewSettings): Drawn {
       }
       const angles = hydrogenAngles(bondAngles(s, atom), count, crowded)
       hydrogenTurns.set(atom.id, angles)
-      for (const angle of angles) {
+      angles.forEach((angle, i) => {
         const end = step(atom, angle, H_BOND)
         placed.push(end)
-        const h = makeLabel(null, end, 'H', 0, false)
-        labels.push(h)
-        const p = leaveBox(atom, end, boxes.get(atom.id))
-        const q = leaveBox(end, atom, h.box)
-        bonds.push({ bondId: null, lines: [{ x1: p.x, y1: p.y, x2: q.x, y2: q.y }] })
-      }
+        drawHydrogen(end, i)
+      })
     }
+  }
+
+  // A chiral center with no label gets its asterisk in the open beside it.
+  const turnsAt = (atom: Atom) => [...bondAngles(s, atom), ...(hydrogenTurns.get(atom.id) ?? [])]
+  const stars: Star[] = []
+  for (const atom of s.atoms) {
+    if (!atom.chiral || boxes.has(atom.id) || inAcid.has(atom.id)) continue
+    const angle = openTurn(turnsAt(atom))
+    stars.push({ atomId: atom.id, ...step(atom, angle, STAR_GAP) })
+    hydrogenTurns.set(atom.id, [...(hydrogenTurns.get(atom.id) ?? []), angle])
   }
 
   const numbers: CarbonNumber[] = []
@@ -256,9 +347,7 @@ export function drawView(s: OrganicStructure, settings: ViewSettings): Drawn {
     numberingNote = found.note
     for (const [atomId, n] of found.numbers) {
       const atom = atomById(s, atomId)!
-      const taken = [...bondAngles(s, atom), ...(hydrogenTurns.get(atomId) ?? [])]
-      const angles = Array.from({ length: 24 }, (_, i) => i * 15)
-      const angle = taken.length ? angles.reduce((p, q) => (Math.min(...taken.map((t) => turn(t, q))) > Math.min(...taken.map((t) => turn(t, p))) ? q : p)) : 45
+      const angle = openTurn(turnsAt(atom))
       const box = boxes.get(atomId)
       let d = 13
       while (box && d < 60 && overlaps(numberBox({ ...step(atom, angle, d), n }), box)) d += 2
@@ -270,6 +359,7 @@ export function drawView(s: OrganicStructure, settings: ViewSettings): Drawn {
     ...labels.map((l) => l.box),
     ...bonds.flatMap((b) => b.lines.flatMap((l) => [{ x: l.x1, y: l.y1, width: 0, height: 0 }, { x: l.x2, y: l.y2, width: 0, height: 0 }])),
     ...numbers.map(numberBox),
+    ...stars.map(starBox),
   ])
   const text = settings.caption.trim()
   const caption = drawn && text ? { text, x: drawn.x + drawn.width / 2, y: drawn.y + drawn.height + 12 + CAPTION_FONT * 0.72 } : null
@@ -278,13 +368,28 @@ export function drawView(s: OrganicStructure, settings: ViewSettings): Drawn {
   return {
     bonds,
     labels,
+    hydrogens,
     numbers,
+    stars,
     caption,
     overbonded: s.atoms.filter((a) => overbonded(s, a)).map((a) => a.id),
     hidden: settings.view === 'skeletal' ? s.atoms.filter((a) => isHidden(s, a)).map((a) => a.id) : [],
     numberingNote,
+    leftLabels,
     crop: all && { x: all.x - EXPORT_PAD, y: all.y - EXPORT_PAD, width: all.width + 2 * EXPORT_PAD, height: all.height + 2 * EXPORT_PAD },
   }
+}
+
+/** The 15° direction from an atom furthest from everything leaving it. */
+function openTurn(taken: number[]) {
+  if (!taken.length) return 45
+  const angles = Array.from({ length: 24 }, (_, i) => i * 15)
+  return angles.reduce((p, q) => (Math.min(...taken.map((t) => turn(t, q))) > Math.min(...taken.map((t) => turn(t, p))) ? q : p))
+}
+
+function starBox(s: Star): Rect {
+  const width = STAR_FONT * 0.389
+  return { x: s.x - width / 2, y: s.y - STAR_FONT * 0.36, width, height: STAR_FONT * 0.72 }
 }
 
 function numberBox(n: { x: number; y: number; n: number }): Rect {

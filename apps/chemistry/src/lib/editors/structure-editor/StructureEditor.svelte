@@ -6,25 +6,30 @@
   //   Draw:   drag from an atom to add a bonded carbon, from empty space to
   //           start a chain, or onto another atom to bond them; tap a bond
   //           for double, then triple
-  //   Move:   drag an atom or bond to move its structure, an end atom to
-  //           swing it round, or a box around atoms to move just those
+  //   Move:   drag a bond to move its structure, an atom to move just it
+  //           (snapping where its bonds come out the usual length or at
+  //           30° steps, unless Alt is held; an end atom swings round, its
+  //           bond stretching, as does an added hydrogen in the full
+  //           structural formula), or a box around atoms to move just those
   //   Delete: tap an atom or bond, or drag a box around atoms, to remove them
   // Atoms and rings dragged from the tray land on an atom (changing its
   // element, or attaching the ring), on a bond (fusing the ring) or on their
-  // own. The drawing and view are kept in this browser (nothing goes in the
-  // address), with undo and redo, and exports are cropped to the figure.
+  // own (an atom near another snapping a bond's length from it, on a 30°
+  // step, and bonding to it); the chiral mark (*) lands on an atom, marking or unmarking it. The
+  // drawing and view are kept in this browser (nothing goes in the address),
+  // with undo and redo, and exports are cropped to the figure.
   import { Copy, Eraser, FileDown, FlipHorizontal2, ImageDown, MousePointer2, PenLine, Redo2, Trash2, Undo2 } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import HelpTip from '$lib/shared/HelpTip.svelte'
   import { copyPng, downloadPng, downloadSvg } from '$lib/shared/exporting'
   import StructureDrawing from './StructureDrawing.svelte'
   import {
-    addAtom, addRing, atomAt, atomById, atomsIn, BOND, bondAt, bondAtoms, bondBetween, BOND_NAMES, bondsOf, connectedTo,
-    cycleBond, emptyStructure, freeSpot, growFrom, HEIGHT, MAIN_ELEMENTS, MORE_ELEMENTS, moveAtoms,
-    nextOrder, openAngle, otherEnd, overbonded, RINGS, ringRoom, setElement, snapAngle, startChain, step, swingEnd, tidyStructure, WIDTH,
+    addAtom, addRing, atomAt, atomById, atomsIn, BOND, bondAt, bondAtoms, bondBetween, bondsOf, connectedTo,
+    cycleBond, dropAtom, dropSpot, emptyStructure, freeSpot, growFrom, HEIGHT, MAIN_ELEMENTS, MORE_ELEMENTS, moveAtom, moveAtoms,
+    openAngle, otherEnd, RINGS, ringRoom, setElement, snapAngle, startChain, step, swingEnd, swingHydrogen, tidyStructure, toggleChiral, WIDTH,
     withoutAtoms, withoutBond, type Atom, type Bond, type ElementSymbol, type OrganicStructure, type Point, type RingKind,
   } from './structure'
-  import { describe, drawView, VIEWS, type View, type ViewSettings } from './view'
+  import { acidGroups, describe, drawView, inRing, VIEWS, type AddedHydrogen, type View, type ViewSettings } from './view'
 
   interface Props {
     name: string
@@ -43,7 +48,7 @@
     condensed: 'Condensed formula: every carbon with its hydrogens, like CH₃',
     full: 'Full structural formula: every atom and bond, each hydrogen on its own bond',
   }
-  type TrayItem = { kind: 'atom'; element: ElementSymbol } | { kind: 'ring'; ring: RingKind }
+  type TrayItem = { kind: 'atom'; element: ElementSymbol } | { kind: 'ring'; ring: RingKind } | { kind: 'chiral' }
   const STORAGE_KEY = 'chemistry-organic-structure'
   const HISTORY_LIMIT = 100
   /** How near the pointer must be, in page units, to land on an atom or bond. */
@@ -52,20 +57,21 @@
   let structure = $state.raw<OrganicStructure>(emptyStructure())
   let past = $state.raw<OrganicStructure[]>([])
   let future = $state.raw<OrganicStructure[]>([])
-  let settings = $state<ViewSettings>({ view: 'skeletal', labelEnds: false, numbering: false, flip: false, caption: '' })
+  let settings = $state<ViewSettings>({ view: 'skeletal', labelEnds: false, labelRings: true, acids: false, reverseLeft: true, numbering: false, flip: false, caption: '' })
   let mode = $state<Mode>('draw')
   let selected = $state.raw<string[]>([])
   let showMore = $state(false)
-  let message = $state('')
   let svg = $state<SVGSVGElement>()
 
   const drawn = $derived(drawView(structure, settings))
+  const hasRing = $derived(structure.atoms.some((a) => a.element === 'C' && inRing(structure, a)))
+  const hasAcid = $derived(acidGroups(structure).size > 0)
 
   // The drag in progress: a bond being drawn, a box, atoms being moved or an
   // end atom swung, or something on its way from the tray.
   let drawing = $state<{ pointerId: number; from: string | null; start: Point; end: Point; moved: boolean } | null>(null)
   let box = $state<{ x1: number; y1: number; x2: number; y2: number; pointerId: number; keep: string[] } | null>(null)
-  let moving = $state.raw<{ pointerId: number; x: number; y: number; origins: Map<string, Point>; before: OrganicStructure; moved: boolean; swing: string | null; keep: boolean } | null>(null)
+  let moving = $state.raw<{ pointerId: number; x: number; y: number; origins: Map<string, Point>; before: OrganicStructure; moved: boolean; swing: string | null; keep: boolean; hydrogen: { atomId: string; index: number; drawnAt: Point[] } | null } | null>(null)
   let carrying = $state<{ item: TrayItem; pointerId: number; x: number; y: number; startX: number; startY: number } | null>(null)
   let loaded = false
 
@@ -77,11 +83,13 @@
       settings = {
         view: VIEWS.some((x) => x.view === v.view) ? v.view : 'skeletal',
         labelEnds: v.labelEnds === true,
+        labelRings: v.labelRings !== false,
+        acids: v.acids === true,
+        reverseLeft: v.reverseLeft !== false,
         numbering: v.numbering === true,
         flip: v.flip === true,
         caption: typeof v.caption === 'string' ? v.caption.slice(0, 80) : '',
       }
-      if (structure.atoms.length) message = 'Your last structure is back.'
     } catch {
       /* nothing saved, or storage blocked */
     }
@@ -98,15 +106,11 @@
     }
   })
 
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
-  /** Makes a change undoable, saying so if it leaves an atom with too many bonds. */
-  function commit(next: OrganicStructure, said: string) {
+  /** Makes a change undoable. */
+  function commit(next: OrganicStructure) {
     past = [...past, structure].slice(-HISTORY_LIMIT)
     future = []
-    const over = next.atoms.find((a) => overbonded(next, a) && !(atomById(structure, a.id) && overbonded(structure, a)))
     structure = next
-    message = over ? `That ${over.element} has too many bonds (ringed in red), so it gets no hydrogens.` : said
   }
   function undo() {
     if (!past.length) return
@@ -126,7 +130,6 @@
   function setMode(next: Mode) {
     mode = next
     if (next === 'draw') selected = []
-    message = ''
   }
 
   /** A point on the page from a pointer's place on screen. */
@@ -136,13 +139,11 @@
   }
 
   function deleteAtoms(ids: string[]) {
-    commit(withoutAtoms(structure, ids), `${plural(ids.length, 'atom')} deleted.`)
+    commit(withoutAtoms(structure, ids))
     selected = selected.filter((id) => !ids.includes(id))
   }
 
   // ----- The tray: drag an atom or ring out, or tap one (or press Enter) to add it in a free spot
-
-  const ringName = (ring: RingKind) => RINGS.find((r) => r.kind === ring)!.name.toLowerCase()
 
   function pickUp(event: PointerEvent, item: TrayItem) {
     if (event.button !== 0) return
@@ -177,17 +178,22 @@
    *  own (in a free spot when it was tapped). */
   function place(item: TrayItem, at: Point | null) {
     const onAtom = at && atomAt(structure, at, REACH)
+    // The chiral mark goes on the atom it's dropped on, or on the selected
+    // atoms when it's tapped; again takes it off.
+    if (item.kind === 'chiral') {
+      const ids = onAtom ? [onAtom.id] : at ? [] : selected
+      if (ids.length) commit(toggleChiral(structure, ids))
+      return
+    }
     if (item.kind === 'atom') {
       if (onAtom && onAtom.element === item.element) return
-      if (onAtom) return commit(setElement(structure, onAtom.id, item.element), `That ${onAtom.element} is now ${item.element}.`)
-      const added = addAtom(structure, item.element, at ?? freeSpot(structure))
-      return commit(added.structure, `${item.element} placed.`)
+      if (onAtom) return commit(setElement(structure, onAtom.id, item.element))
+      return commit(at ? dropAtom(structure, item.element, at) : addAtom(structure, item.element, freeSpot(structure)).structure)
     }
-    const name = ringName(item.ring)
-    if (onAtom) return commit(addRing(structure, item.ring, { atom: onAtom.id }), `A ${name} ring attached.`)
+    if (onAtom) return commit(addRing(structure, item.ring, { atom: onAtom.id }))
     const onBond = at && bondAt(structure, at, REACH / 2)
-    if (onBond) return commit(addRing(structure, item.ring, { bond: onBond.id }), `A ${name} ring fused along that bond.`)
-    commit(addRing(structure, item.ring, { at: at ?? freeSpot(structure, ringRoom(item.ring)) }), `A ${name} ring placed.`)
+    if (onBond) return commit(addRing(structure, item.ring, { bond: onBond.id }))
+    commit(addRing(structure, item.ring, { at: at ?? freeSpot(structure, ringRoom(item.ring)) }))
   }
 
   // ----- The page
@@ -207,32 +213,42 @@
       return
     }
     // A selection moves together; otherwise an end atom swings round its
-    // neighbor and any other atom moves its whole structure.
+    // neighbor (stretching its bond) and any other atom moves on its own.
     if (selected.includes(atom.id)) return grab(event, p, selected, null, true)
     const swing = bondsOf(structure, atom.id).length === 1 ? atom.id : null
-    grab(event, p, swing ? [atom.id] : connectedTo(structure, atom.id), swing, false)
+    grab(event, p, [atom.id], swing, false)
   }
 
   /** Starts moving atoms: a selection, which stays selected afterward, or a
    *  whole structure or one swung atom, highlighted only while dragged. */
   function grab(event: PointerEvent, p: Point, ids: string[], swing: string | null, keep: boolean) {
     const origins = new Map(structure.atoms.filter((a) => ids.includes(a.id)).map((a) => [a.id, { x: a.x, y: a.y }]))
-    moving = { pointerId: event.pointerId, ...p, origins, before: structure, moved: false, swing, keep }
+    moving = { pointerId: event.pointerId, ...p, origins, before: structure, moved: false, swing, keep, hydrogen: null }
     selected = ids
+    svg!.setPointerCapture(event.pointerId)
+  }
+
+  /** Starts swinging one of the full structural formula's added hydrogens
+   *  round its atom (only in Move), from where its atom's hydrogens are drawn. */
+  function pressHydrogen(event: PointerEvent, h: AddedHydrogen) {
+    if (event.button !== 0 || mode !== 'move') return
+    event.stopPropagation()
+    const drawnAt = drawn.hydrogens.filter((x) => x.atomId === h.atomId).sort((a, b) => a.index - b.index).map(({ x, y }) => ({ x, y }))
+    const p = pagePoint(event.clientX, event.clientY)
+    moving = { pointerId: event.pointerId, ...p, origins: new Map(), before: structure, moved: false, swing: null, keep: false, hydrogen: { atomId: h.atomId, index: h.index, drawnAt } }
     svg!.setPointerCapture(event.pointerId)
   }
 
   function pressBond(event: PointerEvent, bond: Bond) {
     if (event.button !== 0) return
     event.stopPropagation()
-    if (mode === 'delete') return commit(withoutBond(structure, bond.id), 'Bond deleted.')
+    if (mode === 'delete') return commit(withoutBond(structure, bond.id))
     if (mode === 'move') {
       const p = pagePoint(event.clientX, event.clientY)
       const both = selected.includes(bond.a) && selected.includes(bond.b)
       return grab(event, p, both ? selected : connectedTo(structure, bond.a), null, both)
     }
-    const order = nextOrder(bond.order)
-    commit(cycleBond(structure, bond.id), `Now a ${BOND_NAMES[order]} bond.`)
+    commit(cycleBond(structure, bond.id))
   }
 
   function pressPage(event: PointerEvent) {
@@ -262,9 +278,18 @@
       drawing = { ...drawing, end, moved: drawing.moved || Math.hypot(end.x - drawing.start.x, end.y - drawing.start.y) > BOND / 3 }
     } else if (moving && event.pointerId === moving.pointerId) {
       const p = pagePoint(event.clientX, event.clientY)
-      if (moving.swing) {
-        const hub = atomById(structure, otherEnd(bondsOf(structure, moving.swing)[0], moving.swing))!
-        structure = swingEnd(moving.before, moving.swing, snapAngle(p.x - hub.x, p.y - hub.y))
+      // A swung atom or hydrogen stays where the pointer took hold of it, not at its center.
+      if (moving.hydrogen) {
+        const { atomId, index, drawnAt } = moving.hydrogen
+        const h = drawnAt[index]
+        structure = swingHydrogen(moving.before, atomId, drawnAt, index, { x: h.x + p.x - moving.x, y: h.y + p.y - moving.y })
+      } else if (moving.swing) {
+        const atom = moving.origins.get(moving.swing)!
+        structure = swingEnd(moving.before, moving.swing, { x: atom.x + p.x - moving.x, y: atom.y + p.y - moving.y })
+      } else if (!moving.keep && moving.origins.size === 1) {
+        // One atom on its own snaps into place, unless Alt is held.
+        const [[id, atom]] = moving.origins
+        structure = moveAtom(moving.before, id, { x: atom.x + p.x - moving.x, y: atom.y + p.y - moving.y }, !event.altKey)
       } else structure = moveAtoms(moving.before, moving.origins, p.x - moving.x, p.y - moving.y)
       moving.moved ||= structure !== moving.before && Math.hypot(p.x - moving.x, p.y - moving.y) > 2
     } else if (box && event.pointerId === box.pointerId) {
@@ -286,7 +311,6 @@
       else {
         past = [...past, moving.before].slice(-HISTORY_LIMIT)
         future = []
-        message = moving.swing ? 'Swung round.' : `${plural(moving.origins.size, 'atom')} moved.`
       }
       if (!moving.keep) selected = []
       moving = null
@@ -296,27 +320,22 @@
     const dragged = Math.abs(box.x2 - box.x1) > 3 || Math.abs(box.y2 - box.y1) > 3
     if (cancelled) selected = box.keep
     else if (mode === 'delete' && dragged && ids.length) deleteAtoms(ids)
-    else if (mode === 'move' && ids.length)
-      message = `${plural(ids.length, 'atom')} selected.`
     box = null
   }
 
   function finishDrawing(d: NonNullable<typeof drawing>) {
     if (!d.from) {
-      if (!d.moved) return commit(addAtom(structure, 'C', d.start).structure, 'C placed.')
-      return commit(startChain(structure, d.start, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)), 'Bond drawn.')
+      if (!d.moved) return commit(addAtom(structure, 'C', d.start).structure)
+      return commit(startChain(structure, d.start, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)))
     }
     const from = atomById(structure, d.from)!
-    if (!d.moved) return commit(growFrom(structure, from.id, openAngle(structure, from)).structure, 'Carbon added.')
+    if (!d.moved) return commit(growFrom(structure, from.id, openAngle(structure, from)).structure)
     const target = drawingTarget(d)
     if (target.atom) {
-      if (bondBetween(structure, from.id, target.atom.id)) {
-        message = 'Those atoms are already bonded.'
-        return
-      }
-      return commit(bondAtoms(structure, from.id, target.atom.id)!, 'Bonded.')
+      if (bondBetween(structure, from.id, target.atom.id)) return
+      return commit(bondAtoms(structure, from.id, target.atom.id)!)
     }
-    commit(growFrom(structure, from.id, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)).structure, 'Carbon added.')
+    commit(growFrom(structure, from.id, snapAngle(d.end.x - d.start.x, d.end.y - d.start.y)).structure)
   }
 
   function keydown(event: KeyboardEvent) {
@@ -339,7 +358,7 @@
 
   function clearPage() {
     if (!confirm('Clear the whole page? You can undo this.')) return
-    commit(emptyStructure(), 'A fresh page.')
+    commit(emptyStructure())
     selected = []
   }
 
@@ -349,10 +368,7 @@
    *  marks are data-no-export, and exporting leaves them out. */
   function picture() {
     const crop = drawn.crop
-    if (!svg || !crop) {
-      message = 'Draw something before copying or downloading.'
-      return null
-    }
+    if (!svg || !crop) return null
     const copy = svg.cloneNode(true) as SVGSVGElement
     copy.setAttribute('viewBox', `${crop.x} ${crop.y} ${crop.width} ${crop.height}`)
     copy.setAttribute('width', String(Math.ceil(crop.width)))
@@ -367,9 +383,8 @@
     if (!p) return
     try {
       await copyPng(p)
-      message = 'Image copied. Paste it into your document.'
     } catch {
-      message = 'Your browser blocked copying. Try downloading a PNG instead.'
+      /* the browser blocked copying */
     }
   }
   function download(kind: 'png' | 'svg') {
@@ -378,10 +393,21 @@
     const file = `organic-structure-${settings.view}.${kind}`
     if (kind === 'png') downloadPng(p, file)
     else downloadSvg(p, file)
-    message = `Downloaded as ${kind.toUpperCase()}.`
   }
 
   const preview = $derived(drawing?.moved ? drawingTarget(drawing) : null)
+
+  /** Where a tray atom being carried over the page would land and bond, if
+   *  it would snap to an atom (not dropped on one). */
+  const landing = $derived.by(() => {
+    if (carrying?.item.kind !== 'atom' || !svg) return null
+    const r = svg.getBoundingClientRect()
+    if (carrying.x < r.left || carrying.x > r.right || carrying.y < r.top || carrying.y > r.bottom) return null
+    const at = pagePoint(carrying.x, carrying.y)
+    if (atomAt(structure, at, REACH)) return null
+    const spot = dropSpot(structure, at)
+    return spot.hub ? { from: spot.hub, at: spot.at } : null
+  })
 </script>
 
 <svelte:window onkeydown={keydown} onpointermove={carry} onpointerup={drop} onpointercancel={drop} />
@@ -420,7 +446,7 @@
         {/each}
       </div>
       <button type="button" class="more" aria-expanded={showMore} onclick={() => (showMore = !showMore)}>
-        {showMore ? 'Fewer atoms' : 'More atoms'}
+        {showMore ? 'Show less' : 'Show more'}
       </button>
       {#if showMore}
         <div class="more-atoms">
@@ -435,6 +461,16 @@
               <strong>{symbol}</strong>
             </button>
           {/each}
+          <button
+            type="button"
+            class="element small"
+            aria-label="Mark a chiral center"
+            title="Chiral center: drop on an atom"
+            onpointerdown={(event) => pickUp(event, { kind: 'chiral' })}
+            onclick={(event) => trayKey(event, { kind: 'chiral' })}
+          >
+            <strong>*</strong>
+          </button>
         </div>
       {/if}
       <div class="tray rings">
@@ -457,7 +493,8 @@
         Mode
         <HelpTip id="mode-tip" label="How to draw">
           Draw: drag from an atom to add a carbon, or from empty space to start a chain; drag onto an atom to bond them; tap a bond for double,
-          then triple. Move: drag an atom or bond to move its structure, an end atom to swing it, or a box to move some atoms. Delete: tap an
+          then triple. Move: drag a bond to move its structure, an atom to move just it (it snaps into place unless you hold Alt; an end atom, or a hydrogen in Full, swings round and its bond stretches), or a box
+          to move some atoms. Delete: tap an
           atom or bond, or drag a box. Shift-click adds to a selection, Delete removes it, and Ctrl+Z undoes.
         </HelpTip>
       </h2>
@@ -481,19 +518,34 @@
         {#if drawn.hidden.length}
           <p class="warning">
             {drawn.hidden.length === 1 ? 'A carbon is' : `${drawn.hidden.length} carbons are`} drawn in a straight line, so the skeletal formula hides
-            {drawn.hidden.length === 1 ? 'it' : 'them'} (marked in amber). Bend the chain there: in Move, drag an end atom to swing it.
+            {drawn.hidden.length === 1 ? 'it' : 'them'} (marked in amber). Bend the chain there: in Move, drag {drawn.hidden.length === 1 ? 'it' : 'one'} off the line.
           </p>
         {/if}
+      {:else}
+        {#if hasRing}
+          <label class="check first">
+            <input type="checkbox" bind:checked={settings.labelRings} />
+            <strong>Label ring carbons</strong>
+          </label>
+        {/if}
+        {#if settings.view !== 'full' && hasAcid}
+          <label class="check first">
+            <input type="checkbox" bind:checked={settings.acids} />
+            <strong>Write acids as CO₂H</strong>
+          </label>
+        {/if}
+      {/if}
+      {#if drawn.leftLabels}
+        <label class="check first">
+          <input type="checkbox" bind:checked={settings.reverseLeft} />
+          <strong>Write H₃C on the left</strong>
+        </label>
       {/if}
       <div class="numbering">
         <label class="check">
           <input type="checkbox" bind:checked={settings.numbering} />
           <strong>Number carbons</strong>
         </label>
-        <HelpTip id="numbering-tip" label="About carbon numbering">
-          The longest chain is numbered (through a C=O, O or N if there is one), from the end nearest a C=O, an O or N, a double or triple bond, then a
-          branch. A ring is numbered round from its substituents. Flip runs the numbers the other way.
-        </HelpTip>
         {#if settings.numbering}
           <button type="button" class="flip" onclick={() => (settings.flip = !settings.flip)}>
             <FlipHorizontal2 size={15} aria-hidden="true" /> Flip
@@ -529,7 +581,6 @@
         <button class="icon-btn" aria-label="Undo" data-tip="Undo" disabled={!past.length} onclick={undo}><Undo2 size={19} /></button>
         <button class="icon-btn" aria-label="Redo" data-tip="Redo" disabled={!future.length} onclick={redo}><Redo2 size={19} /></button>
         <button class="icon-btn" aria-label="Clear the page" data-tip="Clear the page" disabled={!structure.atoms.length} onclick={clearPage}><Trash2 size={19} /></button>
-        <p class="message" aria-live="polite">{message}</p>
       </div>
       <div class="sheet">
         <svg
@@ -555,11 +606,18 @@
             from={drawing?.from ?? null}
             onatomdown={pressAtom}
             onbonddown={pressBond}
+            onhydrogendown={mode === 'move' ? pressHydrogen : undefined}
           />
           {#if drawing && preview}
             <g data-no-export class="preview" pointer-events="none">
               <line x1={drawing.start.x} y1={drawing.start.y} x2={preview.at.x} y2={preview.at.y} />
               {#if !preview.atom}<circle cx={preview.at.x} cy={preview.at.y} r="7" />{/if}
+            </g>
+          {/if}
+          {#if landing}
+            <g data-no-export class="preview" pointer-events="none">
+              <line x1={landing.from.x} y1={landing.from.y} x2={landing.at.x} y2={landing.at.y} />
+              <circle cx={landing.at.x} cy={landing.at.y} r="7" />
             </g>
           {/if}
           {#if box}
@@ -586,8 +644,8 @@
 </div>
 
 {#if carrying}
-  <div class="carried" style:left="{carrying.x}px" style:top="{carrying.y}px" aria-hidden="true">
-    {#if carrying.item.kind === 'atom'}{carrying.item.element}{:else}{@render ringIcon(carrying.item.ring)}{/if}
+  <div class="carried" class:atom={carrying.item.kind === 'atom'} style:left="{carrying.x}px" style:top="{carrying.y}px" aria-hidden="true">
+    {#if carrying.item.kind === 'atom'}{carrying.item.element}{:else if carrying.item.kind === 'chiral'}*{:else}{@render ringIcon(carrying.item.ring)}{/if}
   </div>
 {/if}
 
@@ -629,7 +687,6 @@
   .check.first { margin-top: 0.6rem; }
   .numbering { display: flex; align-items: center; gap: 0.3rem; }
   .numbering .check { margin-right: auto; }
-  .numbering :global(.tip) { margin-top: 0.8rem; }
   .flip {
     display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.8rem; padding: 0.3rem 0.45rem;
     border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); font-size: 0.84rem; font-weight: 600;
@@ -641,13 +698,12 @@
   .canvas { display: flex; flex-direction: column; }
   .toolbar { display: flex; align-items: center; gap: 0.3rem; padding: 0.45rem; border-bottom: 1px solid var(--border); }
   .divider { width: 1px; height: 1.6rem; background: var(--border); margin: 0 0.3rem; flex: none; }
-  .message { flex: 1; min-width: 0; margin: 0 0.5rem 0 0.6rem; color: var(--muted); font-size: 0.86rem; text-align: right; }
   .sheet { padding: 0.75rem; display: flex; justify-content: center; }
   .page { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); touch-action: none; user-select: none; -webkit-user-select: none; }
   .page.draw { cursor: crosshair; }
   .page.draw :global(.atom), .page.draw :global(.bond.target) { cursor: pointer; }
   .page.move { cursor: crosshair; }
-  .page.move :global(.atom), .page.move :global(.bond.target) { cursor: grab; }
+  .page.move :global(.atom), .page.move :global(.bond.target), .page.move :global(.hydrogen) { cursor: grab; }
   .page.moving, .page.moving :global(.atom) { cursor: grabbing; }
   .page.delete, .page.delete :global(.atom), .page.delete :global(.bond) { cursor: crosshair; }
   .box { fill: rgba(37, 99, 235, 0.08); stroke: var(--blue); stroke-width: 1.5; stroke-dasharray: 6 5; pointer-events: none; }
@@ -662,11 +718,12 @@
     box-shadow: 0 8px 20px rgba(16, 24, 40, 0.2); font: 700 1.6rem Arial, Helvetica, sans-serif; color: #111;
     pointer-events: none; user-select: none;
   }
+  /* A carried atom is just its letter, so the snapping preview shows through. */
+  .carried.atom { border: none; background: none; box-shadow: none; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
 
-  /* Phones: the message goes under the buttons. */
+  /* Phones: the views get their own row. */
   @media (max-width: 640px) {
     .toolbar { flex-wrap: wrap; }
-    .message { flex-basis: 100%; margin: 0.2rem 0.3rem 0.1rem; text-align: left; }
     .views { flex-basis: 100%; }
     .views button { flex: 1; padding-inline: 0.2rem; }
     .wide-only { display: none; }

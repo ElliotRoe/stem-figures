@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addAtom, addedHydrogens, addRing, atomsIn, BOND, bondAtoms, bondBetween, connectedTo, cycleBond, emptyStructure,
-  freeSpot, growFrom, ringRoom, HEIGHT, MARGIN, moveAtoms, nextOrder, openAngle, overbonded, setElement, snapAngle, startChain,
-  swingEnd, tidyStructure, WIDTH, withoutAtoms, withoutBond, type Atom, type Bond, type OrganicStructure,
+  addAtom, addedHydrogens, addRing, atomsIn, BOND, bondAtoms, bondBetween, connectedTo, cycleBond, dropAtom, dropSpot, emptyStructure,
+  freeSpot, growFrom, ringRoom, HEIGHT, MARGIN, moveAtom, moveAtoms, nextOrder, openAngle, overbonded, setElement, snapAngle, startChain,
+  swingEnd, swingHydrogen, H_BOND, tidyStructure, toggleChiral, WIDTH, withoutAtoms, withoutBond, type Atom, type Bond, type OrganicStructure,
 } from './structure'
 
 const atom = (id: string, x: number, y: number, element: Atom['element'] = 'C'): Atom => ({ id, element, x, y })
@@ -72,6 +72,26 @@ describe('drawing', () => {
     const s = setElement(ethanol, 'c1', 'Cl')
     expect(s.atoms[0]).toEqual({ ...ethanol.atoms[0], element: 'Cl' })
     expect(s.bonds).toEqual(ethanol.bonds)
+  })
+
+  it('snaps a tray atom dropped near an atom a bond’s length from it, on a 30° step, and bonds them', () => {
+    const s = dropAtom(ethanol, 'Cl', { x: 300 - BOND + 10, y: 300 + 12 })
+    const cl = s.atoms.find((a) => a.element === 'Cl')!
+    expect(cl.x).toBeCloseTo(300 - BOND)
+    expect(cl.y).toBeCloseTo(300)
+    expect(bondBetween(s, 'c1', cl.id)).toBeTruthy()
+  })
+
+  it('leaves a tray atom where it was dropped when no spot is near, or the near atom is full', () => {
+    expect(dropSpot(ethanol, { x: 700, y: 500 })).toEqual({ at: { x: 700, y: 500 }, hub: null })
+    const full = setElement(ethanol, 'o', 'Cl')
+    expect(dropSpot(full, { x: 300 + 3 * dx, y: 300 - dy }).hub).toBeNull()
+  })
+
+  it('never snaps a tray atom onto a spot crowded by another atom', () => {
+    const spot = dropSpot(ethanol, { x: 300 + dx + 5, y: 300 + dy })
+    expect(spot.hub).not.toBeNull()
+    for (const a of ethanol.atoms) if (a.id !== spot.hub!.id) expect(Math.hypot(a.x - spot.at.x, a.y - spot.at.y)).toBeGreaterThan(BOND * 0.6)
   })
 
   it('places a lone atom on the page, kept off its edges', () => {
@@ -167,19 +187,71 @@ describe('hydrogens', () => {
     expect(overbonded(s, o)).toBe(true)
     expect(addedHydrogens(s, o)).toBe(0)
   })
+
+  it('gives an R group none, alone or bonded, and lets it take one bond', () => {
+    const r = setElement(ethanol, 'o', 'R')
+    expect(r.atoms.map((a) => addedHydrogens(r, a))).toEqual([3, 2, 0])
+    expect(addedHydrogens(r, atom('lone', 0, 0, 'R'))).toBe(0)
+    const double = cycleBond(r, r.bonds[1].id)
+    expect(overbonded(double, double.atoms[2])).toBe(true)
+  })
 })
 
 describe('moving', () => {
-  it('swings an end atom round its neighbor, keeping its bond length', () => {
-    const s = swingEnd(ethanol, 'o', 90)
-    const [c2, o] = [s.atoms[1], s.atoms[2]]
+  const c2 = ethanol.atoms[1]
+
+  it('swings an end atom round its neighbor to the nearest 30°, settling on the usual length near it', () => {
+    const s = swingEnd(ethanol, 'o', { x: c2.x + 3, y: c2.y + BOND - 5 })
+    const o = s.atoms[2]
     expect(o.x).toBeCloseTo(c2.x)
     expect(o.y - c2.y).toBeCloseTo(BOND)
     expect(s.atoms.slice(0, 2)).toEqual(ethanol.atoms.slice(0, 2))
   })
 
+  it('stretches or squashes an end atom’s bond to the pointer, but not below half a bond', () => {
+    expect(swingEnd(ethanol, 'o', { x: c2.x, y: c2.y + 2 * BOND }).atoms[2].y - c2.y).toBeCloseTo(2 * BOND)
+    expect(swingEnd(ethanol, 'o', { x: c2.x, y: c2.y + 3 }).atoms[2].y - c2.y).toBeCloseTo(BOND / 2)
+  })
+
+  it('swings an added hydrogen round its atom, keeping where the others were drawn', () => {
+    const drawnAt = [{ x: c2.x, y: c2.y - H_BOND }, { x: c2.x, y: c2.y + H_BOND }]
+    const s = swingHydrogen(ethanol, 'c2', drawnAt, 1, { x: c2.x + 2 * BOND, y: c2.y })
+    expect(s.atoms[1].hydrogens![0]).toEqual({ x: 0, y: -H_BOND })
+    expect(s.atoms[1].hydrogens![1].x).toBeCloseTo(2 * BOND)
+    expect(s.atoms[1].hydrogens![1].y).toBeCloseTo(0)
+    expect(tidyStructure(JSON.parse(JSON.stringify(s))).atoms[1].hydrogens).toEqual(s.atoms[1].hydrogens)
+  })
+
+  it('marks atoms as chiral centers, and unmarks them when they all are', () => {
+    const s = toggleChiral(ethanol, ['c2'])
+    expect(s.atoms[1].chiral).toBe(true)
+    expect(tidyStructure(JSON.parse(JSON.stringify(s))).atoms[1].chiral).toBe(true)
+    expect(toggleChiral(s, ['c2']).atoms[1].chiral).toBeUndefined()
+    expect(toggleChiral(s, ['c1', 'c2']).atoms.slice(0, 2).every((a) => a.chiral)).toBe(true)
+  })
+
   it('doesn’t swing an atom with two bonds', () => {
-    expect(swingEnd(ethanol, 'c2', 90)).toBe(ethanol)
+    expect(swingEnd(ethanol, 'c2', { x: 0, y: 0 })).toBe(ethanol)
+  })
+
+  it('snaps a moved atom where its bonds come out the usual length, or else at a 30° step', () => {
+    // c2 dragged near the other spot where both its bonds are a bond long.
+    const s = moveAtom(ethanol, 'c2', { x: 300 + dx + 4, y: 300 + dy - 5 })
+    expect(s.atoms[1].x).toBeCloseTo(300 + dx)
+    expect(s.atoms[1].y).toBeCloseTo(300 + dy)
+    // Near a spot 30° from c1 only.
+    const c1 = ethanol.atoms[0]
+    const t = moveAtom(ethanol, 'c2', { x: c1.x + BOND + 3, y: c1.y + 2 })
+    expect(t.atoms[1]).toMatchObject({ x: c1.x + BOND, y: c1.y })
+    // Far from any spot, or without snapping, it goes where it's put.
+    expect(moveAtom(ethanol, 'c2', { x: 500, y: 500 }).atoms[1]).toMatchObject({ x: 500, y: 500 })
+    expect(moveAtom(ethanol, 'c2', { x: c1.x + BOND + 3, y: c1.y + 2 }, false).atoms[1]).toMatchObject({ x: c1.x + BOND + 3, y: c1.y + 2 })
+  })
+
+  it('moves one atom on its own, stretching its bonds', () => {
+    const s = moveAtoms(ethanol, new Map([['c2', { x: c2.x, y: c2.y }]]), 0, -20)
+    expect(s.atoms[1]).toMatchObject({ x: c2.x, y: c2.y - 20 })
+    expect([s.atoms[0], s.atoms[2]]).toEqual([ethanol.atoms[0], ethanol.atoms[2]])
   })
 
   it('moves a group together, stopping at the page’s edge', () => {

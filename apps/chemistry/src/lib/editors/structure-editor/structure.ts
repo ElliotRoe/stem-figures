@@ -1,14 +1,15 @@
 // An organic structure drawn in the Organic Structure Editor: its carbons and
 // other atoms (a hydrogen only where the teacher dragged one in), the bonds
 // between them, and where each atom sits on the page. There is no grid: bonds
-// are drawn a fixed length at 30° steps. How each view draws the structure,
+// are drawn a fixed length at 30° steps, and Move can then stretch them or
+// move an atom anywhere. How each view draws the structure,
 // added hydrogens included, is view.ts's. Everything here is plain data and
 // arithmetic, so the page (StructureEditor.svelte) only handles pointers.
 
-export const ELEMENTS = ['C', 'H', 'O', 'N', 'S', 'P', 'F', 'Cl', 'Br', 'I'] as const
+export const ELEMENTS = ['C', 'H', 'O', 'N', 'S', 'P', 'F', 'Cl', 'Br', 'I', 'R'] as const
 export type ElementSymbol = (typeof ELEMENTS)[number]
 
-/** The tray's big cards; the rest are under "More atoms". */
+/** The tray's big cards; the rest are under "Show more". */
 export const MAIN_ELEMENTS: { symbol: ElementSymbol; name: string }[] = [
   { symbol: 'C', name: 'Carbon' },
   { symbol: 'H', name: 'Hydrogen' },
@@ -24,7 +25,18 @@ export const RINGS = [
 export type RingKind = (typeof RINGS)[number]['kind']
 
 export type BondOrder = 1 | 2 | 3
-export interface Atom { id: string; element: ElementSymbol; x: number; y: number }
+export interface Atom {
+  id: string
+  element: ElementSymbol
+  x: number
+  y: number
+  /** Where the full structural formula draws this atom's added hydrogens,
+   *  from the atom, once the teacher has dragged one; set aside while the
+   *  atom has a different number of them. */
+  hydrogens?: Point[]
+  /** marked as a chiral center, drawn with an asterisk (*CH) */
+  chiral?: boolean
+}
 export interface Bond { id: string; a: string; b: string; order: BondOrder }
 export interface OrganicStructure { atoms: Atom[]; bonds: Bond[] }
 export interface Point { x: number; y: number }
@@ -35,15 +47,18 @@ export const HEIGHT = 660
 export const MARGIN = 30
 /** Every bond the editor draws is this long. */
 export const BOND = 70
+/** A drawn C–H (or O–H, N–H) bond in the full structural formula, a little shorter than the rest. */
+export const H_BOND = BOND * 0.8
 /** How near a new atom must come to an existing one to land on it instead. */
 const MERGE = BOND * 0.3
 
 /** Each element's usual valence, which added hydrogens fill, and the most
- *  bonds it can have before it's overbonded (S and P can expand theirs). */
+ *  bonds it can have before it's overbonded (S and P can expand theirs). R,
+ *  any group, takes one bond and never gets hydrogens. */
 const VALENCE: Record<ElementSymbol, { usual: number; most: number }> = {
   C: { usual: 4, most: 4 }, H: { usual: 1, most: 1 }, O: { usual: 2, most: 2 }, N: { usual: 3, most: 3 },
   S: { usual: 2, most: 6 }, P: { usual: 3, most: 5 }, F: { usual: 1, most: 1 }, Cl: { usual: 1, most: 1 },
-  Br: { usual: 1, most: 1 }, I: { usual: 1, most: 1 },
+  Br: { usual: 1, most: 1 }, I: { usual: 1, most: 1 }, R: { usual: 0, most: 1 },
 }
 
 export const emptyStructure = (): OrganicStructure => ({ atoms: [], bonds: [] })
@@ -155,6 +170,35 @@ export function addAtom(s: OrganicStructure, element: ElementSymbol, at: Point) 
   return { structure: { ...s, atoms: [...s.atoms, { id, element, ...onPage(at) }] }, id }
 }
 
+/** How near a snapping spot a tray atom must be dropped to land on it. */
+const DROP_SNAP = BOND * 0.45
+
+/** Where a tray atom dropped at a point lands: the nearest spot a bond's
+ *  length from an atom with room for another bond, at a 30° step clear of
+ *  other atoms, bonded to that atom (the hub); with no spot near the point,
+ *  the point itself. */
+export function dropSpot(s: OrganicStructure, at: Point): { at: Point; hub: Atom | null } {
+  let best: { at: Point; hub: Atom | null } = { at, hub: null }
+  let bestD = DROP_SNAP
+  for (const a of s.atoms) {
+    if (Math.hypot(a.x - at.x, a.y - at.y) > BOND + DROP_SNAP || bondSum(s, a.id) >= VALENCE[a.element].most) continue
+    for (let k = 0; k < 12; k++) {
+      const p = step(a, k * 30)
+      const d = Math.hypot(p.x - at.x, p.y - at.y)
+      const page = onPage(p)
+      if (d < bestD && page.x === p.x && page.y === p.y && crowding(s, p, [a.id]) >= BOND * 0.6) [best, bestD] = [{ at: p, hub: a }, d]
+    }
+  }
+  return best
+}
+
+/** Adds a tray atom where it was dropped, snapped and bonded as dropSpot says. */
+export function dropAtom(s: OrganicStructure, element: ElementSymbol, at: Point) {
+  const spot = dropSpot(s, at)
+  const added = addAtom(s, element, spot.at)
+  return spot.hub ? bondAtoms(added.structure, spot.hub.id, added.id)! : added.structure
+}
+
 /** Joins two atoms with a single bond: null if they're the same atom or
  *  already bonded. */
 export function bondAtoms(s: OrganicStructure, a: string, b: string, order: BondOrder = 1): OrganicStructure | null {
@@ -190,6 +234,19 @@ export const setElement = (s: OrganicStructure, atomId: string, element: Element
   ...s,
   atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, element } : a)),
 })
+
+/** Marks atoms as chiral centers, or unmarks them if they all are already. */
+export function toggleChiral(s: OrganicStructure, ids: string[]): OrganicStructure {
+  const all = ids.every((id) => atomById(s, id)?.chiral)
+  return {
+    ...s,
+    atoms: s.atoms.map((a) => {
+      if (!ids.includes(a.id)) return a
+      const { chiral: _, ...rest } = a
+      return all ? rest : { ...a, chiral: true }
+    }),
+  }
+}
 
 export type RingTarget = { atom: string } | { bond: string } | { at: Point }
 
@@ -277,14 +334,74 @@ export function addRing(s: OrganicStructure, kind: RingKind, target: RingTarget)
   return built.reduce((best, r) => (over(r) < over(best) ? r : best))
 }
 
-/** Swings an end atom (one with a single bond) round its neighbor to a
- *  direction, keeping its bond length. Any other atom is left as it is. */
-export function swingEnd(s: OrganicStructure, atomId: string, angle: number) {
+/** The shortest bond a teacher can stretch or squash one to. */
+export const SHORTEST_BOND = BOND * 0.5
+/** How near the usual length a stretched bond must come to settle on it. */
+const SETTLE = 8
+
+/** Swings an end atom (one with a single bond) round its neighbor toward a
+ *  point: the nearest 30° step, as far out as the point (never shorter than
+ *  SHORTEST_BOND, and settling on the usual length near it). Any other atom
+ *  is left as it is. */
+export function swingEnd(s: OrganicStructure, atomId: string, toward: Point) {
   const atom = atomById(s, atomId)
   const [link] = atom ? bondsOf(s, atomId) : []
   if (!atom || !link || bondsOf(s, atomId).length !== 1) return s
   const hub = atomById(s, otherEnd(link, atomId))!
-  const to = onPage(step(hub, angle, Math.hypot(atom.x - hub.x, atom.y - hub.y)))
+  const to = onPage(swing(hub, toward, BOND))
+  return { ...s, atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, ...to } : a)) }
+}
+
+/** Where a bond from a hub toward a point ends: the nearest 30° step, as
+ *  far out as the point, never shorter than SHORTEST_BOND and settling on
+ *  the usual length near it. */
+function swing(hub: Point, toward: Point, usual: number): Point {
+  const reach = Math.max(SHORTEST_BOND, Math.hypot(toward.x - hub.x, toward.y - hub.y))
+  return step(hub, snapAngle(toward.x - hub.x, toward.y - hub.y), Math.abs(reach - usual) < SETTLE ? usual : reach)
+}
+
+/** Swings one of an atom's added hydrogens round it toward a point, as an
+ *  end atom swings (stretching from H_BOND). The atom keeps where all its
+ *  hydrogens are, from where they were drawn. */
+export function swingHydrogen(s: OrganicStructure, atomId: string, drawnAt: Point[], index: number, toward: Point): OrganicStructure {
+  const atom = atomById(s, atomId)
+  if (!atom || !drawnAt[index]) return s
+  const end = onPage(swing(atom, toward, H_BOND))
+  const hydrogens = drawnAt.map((p, i) => (i === index ? { x: end.x - atom.x, y: end.y - atom.y } : { x: p.x - atom.x, y: p.y - atom.y }))
+  return { ...s, atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, hydrogens } : a)) }
+}
+
+/** How near a snapping spot an atom being moved must come to land on it. */
+const SNAP = BOND * 0.25
+
+/** Moves one atom toward a point. Near a spot where all its bonds would be
+ *  the usual length, or one of them the usual length at a 30° step, it
+ *  snaps there (the first kind winning); elsewhere, or without snapping, it
+ *  goes where it's put. */
+export function moveAtom(s: OrganicStructure, atomId: string, toward: Point, snap = true): OrganicStructure {
+  if (!atomById(s, atomId)) return s
+  const near = snap ? neighbors(s, atomId) : []
+  const nearest = (spots: Point[]) => {
+    let best: Point | null = null
+    let bestD = SNAP
+    for (const p of spots) {
+      const d = Math.hypot(p.x - toward.x, p.y - toward.y)
+      if (d < bestD) [best, bestD] = [p, d]
+    }
+    return best
+  }
+  // Where two of its bonds would both be the usual length.
+  const both = near.flatMap((a, i) =>
+    near.slice(i + 1).flatMap((b) => {
+      const d = Math.hypot(b.x - a.x, b.y - a.y)
+      if (!d || d > 2 * BOND) return []
+      const h = Math.sqrt(BOND * BOND - (d / 2) ** 2)
+      const [mx, my, nx, ny] = [(a.x + b.x) / 2, (a.y + b.y) / 2, -(b.y - a.y) / d, (b.x - a.x) / d]
+      return [{ x: mx + nx * h, y: my + ny * h }, { x: mx - nx * h, y: my - ny * h }]
+    }),
+  )
+  const one = near.flatMap((n) => Array.from({ length: 12 }, (_, k) => step(n, k * 30)))
+  const to = onPage(nearest(both) ?? nearest(one) ?? toward)
   return { ...s, atoms: s.atoms.map((a) => (a.id === atomId ? { ...a, ...to } : a)) }
 }
 
@@ -417,7 +534,14 @@ export function tidyStructure(stored: unknown): OrganicStructure {
   const good = (Array.isArray(atoms) ? atoms : []).filter(
     (a): a is Atom =>
       !!a && typeof a.id === 'string' && ELEMENTS.includes(a.element) && Number.isFinite(a.x) && Number.isFinite(a.y),
-  ).map((a) => ({ id: a.id, element: a.element, ...onPage(a) }))
+  ).map((a) => {
+    const hs = Array.isArray(a.hydrogens) && a.hydrogens.every((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)) ? a.hydrogens : null
+    return {
+      id: a.id, element: a.element, ...onPage(a),
+      ...(hs?.length ? { hydrogens: hs.map((p) => ({ x: p.x, y: p.y })) } : {}),
+      ...(a.chiral === true ? { chiral: true } : {}),
+    }
+  })
   const ids = new Set(good.map((a) => a.id))
   const joined: Bond[] = []
   for (const b of Array.isArray(bonds) ? bonds : []) {

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addRing, BOND, emptyStructure, type Atom, type Bond, type OrganicStructure } from './structure'
+import { addRing, BOND, emptyStructure, swingHydrogen, type Atom, type Bond, type OrganicStructure } from './structure'
 import { drawView, type Drawn, type ViewSettings } from './view'
 
 const atom = (id: string, x: number, y: number, element: Atom['element'] = 'C'): Atom => ({ id, element, x, y })
 const bond = (a: string, b: string, order: Bond['order'] = 1): Bond => ({ id: `${a}-${b}`, a, b, order })
 const settings = (view: ViewSettings['view'], more: Partial<ViewSettings> = {}): ViewSettings => ({
-  view, labelEnds: false, numbering: false, flip: false, caption: '', ...more,
+  view, labelEnds: false, labelRings: true, acids: false, reverseLeft: true, numbering: false, flip: false, caption: '', ...more,
 })
 
 const dx = BOND * Math.cos(Math.PI / 6)
@@ -68,6 +68,14 @@ describe('the condensed formula', () => {
     expect(labelTexts(drawView(zigzag(['C', 'C', 'C']), settings('condensed')))[0]).toBe('H3C')
   })
 
+  it('reads forward everywhere when left labels aren’t reversed', () => {
+    const d = drawView(zigzag(['O', 'C', 'C']), settings('condensed', { reverseLeft: false }))
+    expect(labelTexts(d)).toEqual(['OH', 'CH2', 'CH3'])
+    expect(d.leftLabels).toBe(true)
+    expect(drawView(zigzag(['C', 'C', 'O']), settings('condensed')).leftLabels).toBe(true)
+    expect(drawView(zigzag(['C', 'C', 'C']), settings('skeletal')).leftLabels).toBe(false)
+  })
+
   it('writes the counts as subscripts', () => {
     const d = drawView(ethanol, settings('condensed'))
     expect(d.labels[1].runs).toEqual([{ text: 'C', sub: false }, { text: 'H', sub: false }, { text: '2', sub: true }])
@@ -83,6 +91,44 @@ describe('the condensed formula', () => {
     const [line] = d.bonds[0].lines
     expect(line.x2).toBeCloseTo(400)
     expect(line.y2).toBeLessThan(300 - 8)
+  })
+})
+
+describe('chiral centers and acid groups', () => {
+  const chiral = (s: OrganicStructure, id: string): OrganicStructure => ({ ...s, atoms: s.atoms.map((a) => (a.id === id ? { ...a, chiral: true } : a)) })
+  /** Butanoic acid drawn left to right, its =O above the acid carbon. */
+  const butanoic = (() => {
+    const s = zigzag(['C', 'C', 'C', 'C', 'O'])
+    s.atoms.push(atom('o2', 300 + 3 * dx, 300 - dy - BOND, 'O'))
+    s.bonds.push(bond('a4', 'o2', 2))
+    return s
+  })()
+
+  it('writes a chiral center’s asterisk in its label, or beside a bare corner', () => {
+    const s = chiral(zigzag(['C', 'C', 'C']), 'a2')
+    expect(labelTexts(drawView(s, settings('condensed')))).toEqual(['H3C', '*CH2', 'CH3'])
+    const d = drawView(s, settings('skeletal'))
+    expect(labelTexts(d)).toEqual([])
+    expect(d.stars).toHaveLength(1)
+    // Away from both bonds, so above the corner.
+    expect(d.stars[0].y).toBeLessThan(300 - dy)
+  })
+
+  it('writes an acid group as CO₂H in the condensed formula and carbon skeleton when asked', () => {
+    const d = drawView(butanoic, settings('condensed', { acids: true }))
+    expect(labelTexts(d)).toEqual(['H3C', 'CH2', 'CH2', 'CO2H'])
+    expect(d.bonds).toHaveLength(3)
+    expect(d.labels[3].runs.map((r) => r.sub)).toEqual([false, false, true, false])
+    expect(labelTexts(drawView(butanoic, settings('carbons', { acids: true })))).toEqual(['C', 'C', 'C', 'CO2H'])
+    expect(labelTexts(drawView(butanoic, settings('condensed')))).toContain('OH')
+    expect(labelTexts(drawView(butanoic, settings('full', { acids: true })))).toContain('O')
+  })
+
+  it('writes an acid group facing left as HO₂C', () => {
+    const s = zigzag(['O', 'C', 'C'])
+    s.atoms.push(atom('o2', 300 + dx, 300 - dy - BOND, 'O'))
+    s.bonds.push(bond('a2', 'o2', 2))
+    expect(labelTexts(drawView(s, settings('condensed', { acids: true })))).toEqual(['HO2C', 'CH3'])
   })
 })
 
@@ -124,6 +170,20 @@ describe('the skeletal formula', () => {
     }
   })
 
+  it('leaves ring carbons bare when ring labels are off, labeling the rest', () => {
+    const ring = addRing(emptyStructure(), 'benzene', { at: { x: 500, y: 300 } })
+    const top = ring.atoms[0]
+    const picoline: OrganicStructure = {
+      atoms: [...ring.atoms.map((a, i) => (i === 3 ? { ...a, element: 'N' as const } : a)), atom('me', top.x, top.y - BOND)],
+      bonds: [...ring.bonds, bond(top.id, 'me')],
+    }
+    const off = { labelRings: false }
+    expect(labelTexts(drawView(picoline, settings('condensed', off)))).toEqual(['N', 'CH3'])
+    expect(labelTexts(drawView(picoline, settings('carbons', off)))).toEqual(['N', 'C'])
+    expect(hydrogens(drawView(picoline, settings('full', off)))).toHaveLength(3)
+    expect(labelTexts(drawView(picoline, settings('condensed')))).toHaveLength(7)
+  })
+
   it('draws a chain’s double bond on the side of its neighbors, and a C=O centered', () => {
     const propene = zigzag(['C', 'C', 'C'], [2, 1])
     const [axis, offset] = drawView(propene, settings('skeletal')).bonds[0].lines
@@ -161,6 +221,20 @@ describe('the full structural formula', () => {
     s.bonds.push(bond('a1', 'x'), bond('a1', 'y'))
     const d = drawView(s, settings('full'))
     expect(hydrogens(d)).toHaveLength(1 + 3 + 3)
+  })
+
+  it('draws a dragged hydrogen where it was swung, until its atom’s count changes', () => {
+    const d = drawView(ethanol, settings('full'))
+    const drawnAt = d.hydrogens.filter((h) => h.atomId === 'a3').map(({ x, y }) => ({ x, y }))
+    const s = swingHydrogen(ethanol, 'a3', drawnAt, 0, { x: 300 + 2 * dx, y: 300 + 2 * BOND })
+    const moved = drawView(s, settings('full')).hydrogens.find((h) => h.atomId === 'a3')!
+    expect(moved.x).toBeCloseTo(300 + 2 * dx)
+    expect(moved.y).toBeCloseTo(300 + 2 * BOND)
+    // It moves with its atom, and is placed afresh once the O has no hydrogen.
+    const shifted = { ...s, atoms: s.atoms.map((a) => (a.id === 'a3' ? { ...a, x: a.x + 10 } : a)) }
+    expect(drawView(shifted, settings('full')).hydrogens.find((h) => h.atomId === 'a3')!.x).toBeCloseTo(300 + 2 * dx + 10)
+    const bonded: OrganicStructure = { atoms: [...s.atoms, atom('me', 300 + 3 * dx, 300 - dy)], bonds: [...s.bonds, bond('a3', 'me')] }
+    expect(drawView(bonded, settings('full')).hydrogens.filter((h) => h.atomId === 'a3')).toHaveLength(0)
   })
 
   it('crops to include every hydrogen', () => {

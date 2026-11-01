@@ -1,12 +1,14 @@
 <script lang="ts">
   // An organic structure in one view, from what drawView worked out: bonds,
-  // labels with subscripts, carbon numbers and the caption, in page units.
-  // While editing, each atom and bond also gets a wider invisible target to
-  // press, and atoms their highlights and marks (selected, overbonded, a
+  // labels with subscripts, chiral centers' asterisks, carbon numbers and the
+  // caption, in page units.
+  // While editing, each atom and bond (and, for dragging, each of the full
+  // structural formula's added hydrogens) also gets a wider invisible target
+  // to press, and atoms their highlights and marks (selected, overbonded, a
   // carbon the skeletal formula hides); those are marked data-no-export so
   // they stay out of copied and downloaded pictures.
   import { BOND_NAMES, type Atom, type Bond, type OrganicStructure } from './structure'
-  import { CAPTION_FONT, FONT, NUMBER_FONT, SUB_DROP, SUB_FONT, type Drawn, type Run } from './view'
+  import { CAPTION_FONT, FONT, NUMBER_FONT, STAR_FONT, SUB_DROP, SUB_FONT, type AddedHydrogen, type Drawn, type Run } from './view'
 
   interface Props {
     structure: OrganicStructure
@@ -18,8 +20,10 @@
     from?: string | null
     onatomdown?: (event: PointerEvent, atom: Atom) => void
     onbonddown?: (event: PointerEvent, bond: Bond) => void
+    /** the full structural formula's added hydrogens can be pressed only with this */
+    onhydrogendown?: (event: PointerEvent, hydrogen: AddedHydrogen) => void
   }
-  let { structure, drawn, selected = [], deleting = false, from = null, onatomdown, onbonddown }: Props = $props()
+  let { structure, drawn, selected = [], deleting = false, from = null, onatomdown, onbonddown, onhydrogendown }: Props = $props()
 
   const INK = '#111'
   const editing = $derived(!!onatomdown)
@@ -57,8 +61,18 @@
   <text class="label" x={n.x} y={n.y} dy="0.35em" text-anchor="middle" font-size={NUMBER_FONT} fill={INK}>{n.n}</text>
 {/each}
 
+{#each drawn.stars as star (star.atomId)}
+  <text class="label" x={star.x} y={star.y} dy="0.35em" text-anchor="middle" font-size={STAR_FONT} fill={INK}>*</text>
+{/each}
+
 {#if drawn.caption}
   <text class="label" x={drawn.caption.x} y={drawn.caption.y} text-anchor="middle" font-size={CAPTION_FONT} fill={INK}>{drawn.caption.text}</text>
+{/if}
+
+{#if editing && onhydrogendown}
+  {#each drawn.hydrogens as h (`${h.atomId}-${h.index}`)}
+    <circle data-no-export class="hydrogen target" cx={h.x} cy={h.y} r="15" fill="transparent" role="presentation" onpointerdown={(e) => onhydrogendown(e, h)} />
+  {/each}
 {/if}
 
 {#if editing}
@@ -87,5 +101,5 @@
 
 <style>
   .label { user-select: none; pointer-events: none; }
-  .atom:hover .target:not(.on) { fill: rgba(37, 99, 235, 0.1); }
+  .atom:hover .target:not(.on), .hydrogen:hover { fill: rgba(37, 99, 235, 0.1); }
 </style>

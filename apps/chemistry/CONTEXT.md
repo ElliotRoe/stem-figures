@@ -703,7 +703,7 @@ The molecule a teacher draws in the Organic Structure Editor: its carbons and ot
 _Avoid_: Structure (that's a Lewis structure's), molecule (that's a particle in a particle diagram), drawing
 
 **Added hydrogen**:
-A hydrogen the editor gives an atom to fill its usual valence (C 4, N 3, O 2, S 2, halogens 1) after its bonds, so the teacher never draws them. A hydrogen the teacher drags in from the tray is a drawn atom and counts toward its neighbor's valence.
+A hydrogen the editor gives an atom to fill its usual valence (C 4, N 3, O 2, S 2, halogens 1) after its bonds, so the teacher never draws them. A hydrogen the teacher drags in from the tray is a drawn atom and counts toward its neighbor's valence. In the full structural formula the teacher can swing an added hydrogen round its atom in Move; the atom keeps where its hydrogens sit until its number of them changes.
 _Avoid_: Implicit hydrogen (fine in help text), auto hydrogen
 
 **View**:
@@ -719,11 +719,23 @@ The view with a C at every carbon and no hydrogens on carbon; other atoms are la
 _Avoid_: Carbons only
 
 **Condensed formula**:
-The view with each carbon labeled with its hydrogens (CH₃, CH₂, CH, C) and the bonds between those groups drawn. A label reads backward (H₃C, HO) when its bond comes from the right.
+The view with each carbon labeled with its hydrogens (CH₃, CH₂, CH, C) and the bonds between those groups drawn. A label reads backward (H₃C, HO) when its bond comes from the right, unless the teacher turns that off and every label reads forward (CH₃, OH).
 _Avoid_: Condensed structural formula (fine in help text), condensed structural diagram
 
 **Full structural formula**:
 The view with every atom and every bond drawn, each added hydrogen on its own bond, O–H and N–H included, set in the open space around its atom.
+
+**Ring labels**:
+The C on each ring carbon (with its hydrogens, in the condensed and full structural formulas), shown in every view but the skeletal formula unless the teacher turns them off, so a ring can be a bare polygon as in the skeletal formula while the rest of the organic structure is labeled. Atoms other than carbon in a ring keep their labels.
+_Avoid_: Skeletal rings
+
+**Chiral center**:
+A carbon the teacher marks by dropping the * card on it, drawn with an asterisk in every view: in its label (*CH, *C), or beside the corner where it has no label. The editor never works out chirality itself.
+_Avoid_: Stereocenter (fine in help text), asymmetric carbon
+
+**Acid group**:
+A carbon with a double bond to one O and a single bond to another, neither O bonded to anything else. With "Write acids as CO₂H" the condensed formula and carbon skeleton write it as one label, CO₂H (HO₂C facing left); the skeletal and full structural formulas still draw its bonds.
+_Avoid_: Carboxyl label, COOH
 _Avoid_: Displayed formula, expanded structural formula, Lewis structure (that has lone electrons)
 
 **Carbon numbering**:
