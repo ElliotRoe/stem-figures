@@ -703,7 +703,7 @@ The molecule a teacher draws in the Organic Structure Editor: its carbons and ot
 _Avoid_: Structure (that's a Lewis structure's), molecule (that's a particle in a particle diagram), drawing
 
 **Added hydrogen**:
-A hydrogen the editor gives an atom to fill its usual valence (C 4, N 3, O 2, S 2, halogens 1) after its bonds, so the teacher never draws them. A hydrogen the teacher drags in from the tray is a drawn atom and counts toward its neighbor's valence. In the full structural formula the teacher can swing an added hydrogen round its atom in Move; the atom keeps where its hydrogens sit until its number of them changes.
+A hydrogen the editor gives an atom to fill its usual valence (C 4, N 3, O 2, S 2, halogens 1; none for R or X, which stand for any group) after its bonds, so the teacher never draws them. A hydrogen the teacher drags in from the tray is a drawn atom and counts toward its neighbor's valence. In the full structural formula the teacher can swing an added hydrogen round its atom in Move; the atom keeps where its hydrogens sit until its number of them changes.
 _Avoid_: Implicit hydrogen (fine in help text), auto hydrogen
 
 **View**:

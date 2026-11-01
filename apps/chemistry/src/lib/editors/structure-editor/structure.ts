@@ -6,7 +6,7 @@
 // added hydrogens included, is view.ts's. Everything here is plain data and
 // arithmetic, so the page (StructureEditor.svelte) only handles pointers.
 
-export const ELEMENTS = ['C', 'H', 'O', 'N', 'S', 'P', 'F', 'Cl', 'Br', 'I', 'R'] as const
+export const ELEMENTS = ['C', 'H', 'O', 'N', 'S', 'P', 'F', 'Cl', 'Br', 'I', 'X', 'R'] as const
 export type ElementSymbol = (typeof ELEMENTS)[number]
 
 /** The tray's big cards; the rest are under "Show more". */
@@ -53,12 +53,12 @@ export const H_BOND = BOND * 0.8
 const MERGE = BOND * 0.3
 
 /** Each element's usual valence, which added hydrogens fill, and the most
- *  bonds it can have before it's overbonded (S and P can expand theirs). R,
- *  any group, takes one bond and never gets hydrogens. */
+ *  bonds it can have before it's overbonded (S and P can expand theirs). R
+ *  and X, any group, take one bond and never get hydrogens. */
 const VALENCE: Record<ElementSymbol, { usual: number; most: number }> = {
   C: { usual: 4, most: 4 }, H: { usual: 1, most: 1 }, O: { usual: 2, most: 2 }, N: { usual: 3, most: 3 },
   S: { usual: 2, most: 6 }, P: { usual: 3, most: 5 }, F: { usual: 1, most: 1 }, Cl: { usual: 1, most: 1 },
-  Br: { usual: 1, most: 1 }, I: { usual: 1, most: 1 }, R: { usual: 0, most: 1 },
+  Br: { usual: 1, most: 1 }, I: { usual: 1, most: 1 }, X: { usual: 0, most: 1 }, R: { usual: 0, most: 1 },
 }
 
 export const emptyStructure = (): OrganicStructure => ({ atoms: [], bonds: [] })

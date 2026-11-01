@@ -195,6 +195,14 @@ describe('hydrogens', () => {
     const double = cycleBond(r, r.bonds[1].id)
     expect(overbonded(double, double.atoms[2])).toBe(true)
   })
+
+  it('treats X like R: one bond, and no hydrogens even on its own', () => {
+    const x = setElement(ethanol, 'o', 'X')
+    expect(x.atoms.map((a) => addedHydrogens(x, a))).toEqual([3, 2, 0])
+    expect(addedHydrogens(x, atom('lone', 0, 0, 'X'))).toBe(0)
+    const double = cycleBond(x, x.bonds[1].id)
+    expect(overbonded(double, double.atoms[2])).toBe(true)
+  })
 })
 
 describe('moving', () => {

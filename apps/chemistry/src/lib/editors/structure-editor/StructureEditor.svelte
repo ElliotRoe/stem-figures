@@ -538,7 +538,7 @@
       {#if drawn.leftLabels}
         <label class="check first">
           <input type="checkbox" bind:checked={settings.reverseLeft} />
-          <strong>Write H₃C on the left</strong>
+          <strong>Flip left labels (H₃C, HO)</strong>
         </label>
       {/if}
       <div class="numbering">

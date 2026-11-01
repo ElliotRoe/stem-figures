@@ -98,7 +98,7 @@ export interface Drawn {
 }
 
 /** Arial's widths, in ems, for the letters labels use; anything else is a digit. */
-const EM: Record<string, number> = { '*': 0.389, C: 0.722, H: 0.722, O: 0.778, N: 0.722, S: 0.667, P: 0.667, F: 0.611, B: 0.667, I: 0.278, l: 0.222, r: 0.333 }
+const EM: Record<string, number> = { '*': 0.389, C: 0.722, H: 0.722, O: 0.778, N: 0.722, S: 0.667, P: 0.667, F: 0.611, B: 0.667, I: 0.278, R: 0.722, X: 0.667, l: 0.222, r: 0.333 }
 const runWidth = (r: Run) => [...r.text].reduce((w, c) => w + (EM[c] ?? 0.556), 0) * (r.sub ? SUB_FONT : FONT)
 const CAP = FONT * 0.36
 
