@@ -13,5 +13,6 @@ export const SITE_URL = 'https://chemistryfigures.com'
 export const FAMILY = { name: 'STEM Figures', url: 'https://stemfigures.com' }
 export const SISTER_SITES = [
   { name: 'Math Figures', url: 'https://mathfigures.com' },
-  { name: 'Physics Figures', url: 'https://physicsfigures.com' }
+  { name: 'Physics Figures', url: 'https://physicsfigures.com' },
+  { name: 'Biology Figures', url: 'https://biologyfigures.com' }
 ]
