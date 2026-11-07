@@ -13,6 +13,7 @@ import BoxPlotPreview from './box-plot/Preview.svelte'
 import CirclePreview from './circle/Preview.svelte'
 import CumulativeFrequencyPreview from './cumulative-frequency/Preview.svelte'
 import CompositeShapePreview from '$lib/editors/composite-shape/Preview.svelte'
+import TransformationsPreview from '$lib/editors/transformations/Preview.svelte'
 import ConePreview from './cone/Preview.svelte'
 import CoordinateGridPreview from './coordinate-grid/Preview.svelte'
 import CylinderPreview from './cylinder/Preview.svelte'
@@ -63,6 +64,7 @@ export const PREVIEWS: Record<string, Component> = {
   'mapping-diagram': MappingDiagramPreview,
   'length-reading': LengthReadingPreview,
   'composite-shape': CompositeShapePreview,
+  transformations: TransformationsPreview,
 }
 
 export const GENERATORS = generatorsOn(SITE_ID, PREVIEWS)

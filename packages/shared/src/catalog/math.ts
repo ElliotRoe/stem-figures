@@ -43,6 +43,24 @@ export const MATH: CatalogEntry[] = [
     ],
   },
   {
+    id: 'transformations',
+    site: 'math',
+    kind: 'editor',
+    name: 'Transformations Editor',
+    path: '/transformations',
+    blurb: 'Click a polygon onto a coordinate grid, then translate, reflect, rotate or dilate it.',
+    description:
+      'Make transformation figures for geometry and 8th grade math. Click a polygon, path or point onto a coordinate grid, then translate, reflect, rotate or dilate it, one step after another, with A′ and A″ labels. Switch between student, question and answer key versions, and copy each into a worksheet or test.',
+    keywords: [
+      'transformation', 'transformations', 'geometric transformations', 'rigid transformations', 'rigid motion', 'rigid motions',
+      'translation', 'translations', 'translate', 'slide', 'reflection', 'reflections', 'reflect', 'flip', 'line of reflection',
+      'rotation', 'rotations', 'rotate', 'turn', 'center of rotation', 'dilation', 'dilations', 'dilate', 'scale factor',
+      'center of dilation', 'enlargement', 'composition', 'composition of transformations', 'preimage', 'image',
+      'prime', 'congruent', 'similar figures', 'coordinate plane', 'coordinate grid', 'polygon on a grid', 'shapes on a grid',
+      'four quadrants', 'geometry', '8th grade', 'editor', 'printable',
+    ],
+  },
+  {
     id: 'number-line',
     site: 'math',
     name: 'Number Line Generator',

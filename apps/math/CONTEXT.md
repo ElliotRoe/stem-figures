@@ -17,7 +17,7 @@ A page that makes one kind of figure from a teacher's settings, named "<Figure> 
 _Avoid_: Maker, tool, builder, app
 
 **Editor**:
-A page where the teacher builds a figure by hand on a canvas, rather than from settings, named "<Figure> Editor". It's listed in the directory like a generator, tagged Editor. Its figure is kept in the teacher's browser, never in the page address, so it has no links to share.
+A page where the teacher builds a figure by hand on a canvas, rather than from settings, named "<Figure> Editor". It's listed in the directory like a generator, tagged Editor. Its figure is kept in the teacher's browser, never in the page address, so it has no links to share. Most fill the window with a way home of their own; the Transformations Editor, with as many settings as a generator, is laid out like one.
 _Avoid_: Builder, drawing tool, generator (for this kind of page)
 
 **Directory**:
@@ -143,6 +143,64 @@ _Avoid_: Edge, border, endpoint (that's a circle where a line stops)
 **Point label**:
 The letter written at a point, typed before it in textbook notation: A(1, 2) on a coordinate grid, P(0.35) on a number line. It's one letter, with primes or a subscript allowed (A′, A₁), and it belongs to its point, so it stays when the point's numbers change and goes when the point is deleted. A points row's style shows just the labels or the labels with their coordinates or values, A or A(0.35). On a number line a labeled point's value is never written, since it would give the answer away; endpoints and sequence terms aren't labeled.
 _Avoid_: Point name, vertex name (that's a triangle's), letter, tag
+
+### Transformations
+
+**Transformations** (the figure):
+A coordinate grid showing a preimage and the images transformations make of it, built in the Transformations Editor.
+_Avoid_: Transformation generator, transformation graph
+
+**Preimage**:
+What the teacher draws on the grid to be transformed: a polygon, a path of segments, or a single point. One per figure.
+_Avoid_: Shape (that's a measured triangle, quadrilateral or regular polygon), original, figure (that's the whole picture)
+
+**Image**:
+What one transformation makes of the preimage or of the image before it, always worked out, never placed by hand. Its point labels carry one more prime than the one it came from (A to A′ to A″).
+_Avoid_: Copy, result, transformed shape
+
+**Transformation**:
+One step that moves the preimage or an image: a translation, reflection, rotation or dilation.
+_Avoid_: Move, operation, motion
+
+**Composition**:
+Transformations done one after another, each acting on the image the step before it made.
+_Avoid_: Sequence (that's a number line's), chain, combo
+
+**Translation**:
+A transformation that slides every point by the same amount, ⟨a, b⟩, which can be shown as an arrow.
+_Avoid_: Slide, shift
+
+**Reflection**:
+A transformation that flips over a line of reflection.
+_Avoid_: Flip, mirror
+
+**Line of reflection**:
+The line a reflection flips over: the x-axis, the y-axis, y = x, y = −x, or a line x = c or y = c.
+_Avoid_: Mirror line, axis of symmetry, line of symmetry
+
+**Rotation**:
+A transformation that turns by 90°, 180° or 270°, clockwise or counterclockwise, about a center of rotation.
+_Avoid_: Turn
+
+**Center of rotation**:
+The point a rotation turns about.
+_Avoid_: Origin (that's always (0, 0)), pivot, center (alone)
+
+**Dilation**:
+A transformation that stretches or shrinks by a positive scale factor from a center of dilation.
+_Avoid_: Enlargement, scaling, resize
+
+**Center of dilation**:
+The point a dilation stretches from or shrinks toward.
+_Avoid_: Origin, center (alone)
+
+**Scale factor**:
+How many times as far from the center of dilation each point ends up: above 1 enlarges, below 1 shrinks.
+_Avoid_: Ratio, scale, zoom
+
+**Glide reflection**:
+A composition of a translation and then a reflection over a line parallel to it, made as those two steps.
+_Avoid_: Glide, walk
 
 ### Shapes
 

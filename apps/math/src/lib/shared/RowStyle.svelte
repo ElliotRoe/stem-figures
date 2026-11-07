@@ -24,16 +24,17 @@
   // colorOnly: a number line's row, whose line, arrows and circles carry meaning, so they can't change.
   // canLabel: its points can have labels (a sequence's terms can't). labelExample: a labeled point
   // with its coordinates, as the label style's second choice shows it.
+  // hasArrows: its line can end in arrowheads (a figure's sides on the Transformations Editor can't).
   let {
     row, label, id, isPoints = false, hasDomain = false, hasAsymptotes = false, colorOnly = false, canLabel = true,
-    labelExample = 'A(2, 3)', isInequality = false,
+    labelExample = 'A(2, 3)', isInequality = false, hasArrows = true,
   }: {
     row: Styled; label: string; id: string; isPoints?: boolean; hasDomain?: boolean; hasAsymptotes?: boolean; colorOnly?: boolean
-    canLabel?: boolean; labelExample?: string; isInequality?: boolean
+    canLabel?: boolean; labelExample?: string; isInequality?: boolean; hasArrows?: boolean
   } = $props()
 
   const arrowKey = $derived(isInequality ? 'barrows' : 'arrows')
-  const arrows = $derived(row[arrowKey] ?? 'both')
+  const arrows = $derived(hasArrows ? (row[arrowKey] ?? 'both') : 'none')
   // How much the miniature's line thickens or thins, as the figure's does.
   const WEIGHT: Record<Thickness, number> = { thin: 0.6, medium: 1, thick: 1.6 }
   const weight = $derived(WEIGHT[row.width ?? 'medium'])
@@ -314,6 +315,7 @@
           </div>
         {/if}
 
+        {#if hasArrows}
         <div class="group">
           <span class="name" id="{id}-arrows">Arrows</span>
           <div class="segmented" role="radiogroup" aria-labelledby="{id}-arrows">
@@ -324,6 +326,7 @@
             {/each}
           </div>
         </div>
+        {/if}
       {/if}
 
       {#if row.values !== undefined}

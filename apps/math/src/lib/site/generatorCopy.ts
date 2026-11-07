@@ -24,6 +24,48 @@ export interface GeneratorCopy {
 }
 
 export const COPY: Record<string, GeneratorCopy> = {
+  transformations: {
+    heading: 'Transformations on a coordinate grid',
+    intro: [
+      'The Transformations Editor draws a polygon, path or point on a coordinate grid and the images transformations make of it: translations, reflections over the x-axis, the y-axis, y = x, y = −x or any line x = a, y = a or y = ±x + a, rotations of 90°, 180° or 270° about any point, and dilations by any scale factor from any center. Click the preimage out on the grid, then add transformations one after another; each one acts on the image the one before made, labeled A′, then A″.',
+      'Teachers use it for 8th grade and geometry transformation units: practice where students draw the image, questions where they name the transformation, and answer keys. Switch between the Student, Question and Answer key versions of the same figure to make each one.',
+    ],
+    settings: [
+      'The preimage: one point, a path or a polygon of up to 10 vertices, clicked onto the grid or typed, with a label for each vertex',
+      'Transformations, one after another: a translation by ⟨a, b⟩, a reflection over a line, a rotation of 90°, 180° or 270° either way about any point, and a dilation by any scale factor from any point, each placed on the grid with a preview',
+      'Color, or black and white for a copier, with images told apart by dashed and dotted lines, and each figure’s own color and line: solid, dashed or dotted, thin, medium or thick',
+      'Three versions of the figure: Student, Question and Answer key, or exactly what shows: the preimage, images, in-between images, lines of reflection, centers, translation arrows, point labels and coordinates',
+      'The grid, with the same settings as the Coordinate Grid Generator: each axis’s range, numbering, titles, axis labels and end caps, gridlines and minor gridlines, and small, medium or large labels',
+    ],
+    faqs: [
+      {
+        q: 'How do I draw the preimage?',
+        a: 'Click grid points on the figure, one per vertex: one click makes a point, more make a path, and clicking the first point again closes it into a polygon. You can also type each vertex’s coordinates, and drag a vertex to move it.',
+      },
+      {
+        q: 'How do I add a transformation?',
+        a: 'Choose Add a transformation and pick one, then place it on the grid. A translation follows the pointer: click where the first vertex should go. A reflection previews over the axis or diagonal nearest the pointer; for a line like x = 2, choose it in the step’s Over menu. A rotation asks for its center, then shows all three turns to pick from. A dilation asks for its center. Afterwards its numbers can be typed, or dragged left and right.',
+      },
+      {
+        q: 'How do I make a version for students without the answer?',
+        a: 'Pick a version under Show. Student shows the preimage with its line of reflection or center, for students to draw the image. Question shows the preimage and the final image, for students to name the transformation. Answer key shows everything. The gear beside them chooses exactly what shows, and each image can be hidden on its own with its eye button.',
+      },
+      {
+        q: 'What if an image goes off the grid?',
+        a: 'The step says which points are off the grid, or so close to its edge that their labels get cut off, and Widen the grid makes room for every figure with a block to spare. A four-quadrant grid widens evenly, the same distance from the origin every way, so where it stops doesn’t give away where the image is.',
+      },
+      {
+        q: 'Can I do a glide reflection or another composition?',
+        a: 'Yes. Add the transformations in order, like a translation and then a reflection over a line parallel to it for a glide reflection. With In-between images unticked, only the preimage and the final image show.',
+      },
+      {
+        q: 'Is my figure saved?',
+        a: 'It is kept in this browser, so it is still there when you come back, with undo and redo. It isn’t in the page address, so there is no link to share; copy or download the image instead.',
+      },
+    ],
+    imageAlt: 'A triangle on a coordinate grid and its image after a reflection over the line y = x, with its vertices labeled A, B, C and A′, B′, C′',
+    educationalLevel: ['Middle school', 'High school', 'Geometry'],
+  },
   'coordinate-grid': {
     heading: 'Coordinate grids and graph paper for graphing',
     intro: [

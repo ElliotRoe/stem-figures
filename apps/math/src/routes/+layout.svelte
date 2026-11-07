@@ -20,8 +20,12 @@
   // Cloudflare Web Analytics beacon; the token is set in Vercel's production env only.
   const beacon = import.meta.env.CF_BEACON_TOKEN
   const onGenerator = $derived(!!findGenerator(page.url.pathname))
-  // An editor fills the whole window, with its own way home.
-  const onEditor = $derived(findGenerator(page.url.pathname)?.kind === 'editor')
+  // An editor fills the whole window, with its own way home, except the
+  // Transformations Editor, which is laid out like a generator.
+  const onEditor = $derived.by(() => {
+    const entry = findGenerator(page.url.pathname)
+    return entry?.kind === 'editor' && entry.id !== 'transformations'
+  })
 </script>
 
 <svelte:head>

@@ -7,6 +7,8 @@
   // beside the export buttons it matters for. Status messages appear as a
   // toast over the figure. Printing prints just the figure, the width of a
   // letter page unless the page sets --print-width (and --print-height).
+  // `share` is false for a figure the page address doesn't hold, which has no link to share.
+  // `tools` adds a page's own buttons after undo and redo, and `end` its own at the far right, after the label size.
   import { Copy, FileDown, ImageDown, Redo2, Share, Undo2 } from '@lucide/svelte'
   import type { Snippet } from 'svelte'
   import { copyPng, downloadPng, downloadSvg } from './exporting'
@@ -18,9 +20,12 @@
     filename: string
     history: ReturnType<typeof createHistory>
     labelSize?: LabelSize
+    share?: boolean
+    tools?: Snippet
+    end?: Snippet
     children: Snippet
   }
-  let { svg, filename, history, labelSize = $bindable(), children }: Props = $props()
+  let { svg, filename, history, labelSize = $bindable(), share = true, tools, end, children }: Props = $props()
 
   const LABEL_ORDER: LabelSize[] = ['large', 'medium', 'small']
   const GLYPH: Record<LabelSize, number> = { large: 20, medium: 15, small: 11 }
@@ -63,10 +68,11 @@
     <button class="icon-btn" aria-label="Copy image" data-tip="Copy image" onclick={copyImage}><Copy size={19} /></button>
     <button class="icon-btn" aria-label="Download PNG" data-tip="Download PNG" onclick={() => figure() && downloadPng(figure()!, `${filename}.png`)}><ImageDown size={19} /></button>
     <button class="icon-btn" aria-label="Download SVG" data-tip="Download SVG" onclick={() => figure() && downloadSvg(figure()!, `${filename}.svg`)}><FileDown size={19} /></button>
-    <button class="icon-btn" aria-label="Share link" data-tip="Share link" onclick={shareLink}><Share size={19} /></button>
+    {#if share}<button class="icon-btn" aria-label="Share link" data-tip="Share link" onclick={shareLink}><Share size={19} /></button>{/if}
     <span class="divider"></span>
     <button class="icon-btn" aria-label="Undo" data-tip="Undo" disabled={!history.canUndo} onclick={history.undo}><Undo2 size={19} /></button>
     <button class="icon-btn" aria-label="Redo" data-tip="Redo" disabled={!history.canRedo} onclick={history.redo}><Redo2 size={19} /></button>
+    {#if tools}<span class="divider"></span>{@render tools()}{/if}
     {#if labelSize !== undefined}
       <!-- Three buttons, each an "A" drawn at its size: large, medium, small. -->
       <div class="label-size" role="radiogroup" aria-label="Label size, for how big text prints">
@@ -78,6 +84,7 @@
         {/each}
       </div>
     {/if}
+    {#if end}<div class="end">{@render end()}</div>{/if}
   </div>
   <div class="sheet" bind:this={sheet}>
     {@render children()}
@@ -89,11 +96,15 @@
   .canvas { display: flex; flex-direction: column; }
   .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; padding: 0.45rem; border-bottom: 1px solid var(--border); }
   .divider { width: 1px; height: 1.6rem; background: var(--border); margin: 0 0.3rem; }
+  .end { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; }
+  .label-size + .end { margin-left: 0.4rem; }
   .label-size { margin-left: auto; display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--bg); }
   .size {
     display: inline-grid; place-items: center; width: 2.1rem; height: 1.9rem; padding: 0; border: 0; border-radius: 8px;
-    background: transparent; color: var(--muted); font-family: 'Times New Roman', Times, serif; line-height: 1; cursor: pointer;
+    background: transparent; color: var(--muted); line-height: 1; cursor: pointer;
   }
+  /* Only the A is in serif, not the button's tooltip. */
+  .size span { font-family: 'Times New Roman', Times, serif; }
   .size:hover { color: var(--ink); }
   .size.on { background: #fff; color: var(--blue); box-shadow: 0 1px 2px rgb(17 24 39 / 12%); }
   @media (max-width: 480px) {

@@ -8,12 +8,10 @@
   import GeneratorPage from '$shared/GeneratorPage.svelte'
   import { generatorState } from '$shared/generatorState.svelte'
   import { untrack } from 'svelte'
-  import AxisSettings from '$shared/graph/AxisSettings.svelte'
-  import GridlineSettings from '$shared/graph/GridlineSettings.svelte'
-  import TitleSettings from '$shared/graph/TitleSettings.svelte'
   import HelpTip from '$shared/HelpTip.svelte'
   import MathInput from '$lib/shared/MathInput.svelte'
   import RowStyle from '$lib/shared/RowStyle.svelte'
+  import GridSettingsPanel from '$lib/grid/GridSettingsPanel.svelte'
   import { ROW_DEFAULTS, readEquations, type Row } from './equations.js'
   import Graph from './Graph.svelte'
   import {
@@ -117,33 +115,18 @@
   {/snippet}
 
   {#snippet settings()}
-    <TitleSettings
-      bind:title={s.title} bind:titleMode={s.titleMode} bind:xTitle={s.xTitle} bind:xTitleMode={s.xTitleMode}
-      bind:yTitle={s.yTitle} bind:yTitleMode={s.yTitleMode}
-      placeholders={{ title: 'Distance over time', xTitle: 'Time (hours)', yTitle: 'Distance (km)' }}
-    />
-
-    <AxisSettings
-      axis="x" read={axes.x} problems={axes.problems} field={MathInput} extras={usesTrig ? [`trig in ${clean.angle}`] : []}
-      bind:from={s.xFrom} bind:to={s.xTo} bind:step={s.xStep} bind:every={s.xEvery}
-      bind:labelMode={s.xLabelMode} bind:label={s.xLabel} bind:startCap={s.xStartCap} bind:endCap={s.xEndCap}
-    >
-      {#if usesTrig || clean.angle !== 'radians'}
-        <label class="field">
-          <span>Trig reads x in <span class="hint">type ° (or deg) in the range for degrees</span></span>
-          <select bind:value={s.angle}>
-            {#each Object.entries(ANGLE_UNITS) as [v, label]}<option value={v}>{label}</option>{/each}
-          </select>
-        </label>
-      {/if}
-    </AxisSettings>
-    <AxisSettings
-      axis="y" read={axes.y} problems={axes.problems} field={MathInput}
-      bind:from={s.yFrom} bind:to={s.yTo} bind:step={s.yStep} bind:every={s.yEvery}
-      bind:labelMode={s.yLabelMode} bind:label={s.yLabel} bind:startCap={s.yStartCap} bind:endCap={s.yEndCap}
-    />
-
-    <GridlineSettings bind:minor={s.minor} bind:gridlines={s.gridlines} />
+    <GridSettingsPanel bind:s={gen.s} xExtras={usesTrig ? [`trig in ${clean.angle}`] : []}>
+      {#snippet xChildren()}
+        {#if usesTrig || clean.angle !== 'radians'}
+          <label class="field">
+            <span>Trig reads x in <span class="hint">type ° (or deg) in the range for degrees</span></span>
+            <select bind:value={s.angle}>
+              {#each Object.entries(ANGLE_UNITS) as [v, label]}<option value={v}>{label}</option>{/each}
+            </select>
+          </label>
+        {/if}
+      {/snippet}
+    </GridSettingsPanel>
   {/snippet}
 
   {#snippet figure()}
