@@ -199,6 +199,8 @@ describe('deleting part of the preimage', () => {
 test('the first time, a triangle reflected over the y-axis', () => {
   const d = starterDrawing()
   expect([d.vertices.length, d.closed]).toEqual([3, true])
+  // In the top left, like the rest of the editor's examples, its image in the top right.
+  expect(d.vertices.every((p) => p.x < 0 && p.y > 0)).toBe(true)
   expect(shapesOf(d)[1].pts.map((p) => p.x)).toEqual(d.vertices.map((p) => -p.x))
   expect(tidyDrawing(JSON.parse(JSON.stringify(d)))).toEqual(d)
 })

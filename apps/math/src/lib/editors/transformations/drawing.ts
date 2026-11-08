@@ -258,7 +258,7 @@ export function withoutSide(o: Outline, i: number): Outline {
 export function starterDrawing(): Drawing {
   return {
     ...emptyDrawing(),
-    vertices: [{ x: 2, y: 2 }, { x: 7, y: 3 }, { x: 3, y: 7 }],
+    vertices: [{ x: -7, y: 2 }, { x: -2, y: 3 }, { x: -6, y: 7 }],
     names: ['A', 'B', 'C'],
     closed: true,
     steps: [newStep({ kind: 'reflection', line: { kind: 'vertical', c: 0 } }, 0)],
